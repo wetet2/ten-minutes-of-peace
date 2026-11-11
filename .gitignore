@@ -8,3 +8,5 @@
 *.sln
 .vs/
 /TempArtValidation/
+/Assets/_Recovery/
+/Assets/_Recovery.meta

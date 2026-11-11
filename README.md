@@ -46,3 +46,39 @@ Open `Assets/Scenes/ParkPolished.unity`, then Play. Actual render: `Previews/par
 In Unity's Game tab, choose/add a Fixed Resolution of 2560 x 1440 or 3840 x 2160, and inspect at 1x scale. Free Aspect follows the panel size; a small Game panel is not a 4K view. Windows player default size is 2560 x 1440. Existing scenes remain unchanged.
 
 Validation: Unity 6000.6.8f1 batch compilation, scene generation and 4K rendering succeeded. Interactive mouse controls and device performance were not measured.
+
+## Drawing page
+
+Open `Assets/Scenes/Drawing.unity` and press Play, or use `Peace Park > Open Drawing Page`. Use a landscape Game view (16:9 or 4:3). Choose one of five animals, one of ten colors and one of four brush sizes, then drag inside either outline. Paint is clipped to the silhouette; facial features remain on a separate overlay. Switching animals clears the previous drawing. Apply locks for three seconds and leaves the current drawing in place. There is no undo, eraser, zoom or saved-work gallery.
+
+This version is local drawing only. `DrawingPage.Applied` provides the animal index and front/back PNG byte arrays for future networking integration; no host connection or animal spawn is implemented. Templates are procedural placeholders and are not yet UV-matched to final 3D animals.
+
+Validation: Unity compilation, ten silhouette masks, stroke clipping, repeated Apply rejection, and selection reset passed. An actual Play-mode screenshot is in `Previews/drawing-page.png`. Touch input on physical tablets has not been verified.
+
+## Drawing visual revision
+
+The Drawing scene now uses generated toy-style animal head art, shaded rounded panels and glossy palette/brush/apply buttons. Templates use 960 x 1200 paint surfaces, smoother contours, smiling expressions and a separate facial-feature overlay. Open the same Drawing scene; rebuilding is unnecessary. Artwork is stored in `Assets/Resources/Drawing/AnimalHeads.png`. Built-in image generation was used only for the head atlas; controls, shadows and coloring behavior remain live Unity code. Prompt: `Docs/drawing-art-prompt.txt`.
+
+### Final icon framing
+
+Each animal head now uses its own measured atlas bounds and original aspect ratio instead of equal-width slices. Alpha-bound checks confirm that all five include transparent margins without clipped ears/horns. The earlier polished UI was rendered and coloring tests passed. The final framing-only render attempt was blocked by Unity Editor license error 198 (`No valid Unity Editor license found`). Reactivate the Editor license in Unity Hub, open Drawing, and press Play to inspect the latest version. `Previews/drawing-page-polished.png` currently shows the preceding visual revision.
+
+## Upright animal templates
+
+The five coloring animals now share chubby humanoid torsos, lowered arms with separate hands, separated legs and small standing feet. Animal faces and ears remain species-specific. Front/back silhouettes match. See `Docs/character-proportions.md` for the future 3D rig direction. This change updates the 2D coloring templates; 3D models and walking animations are not yet created.
+
+The upright revision was compiled and rendered successfully in Unity 6000.6.8f1. Validation checked all ten masks, paint clipping, distinct left/right legs, arm-to-torso clearance, apply lock and reset on animal selection. Actual Play-mode preview: `Previews/drawing-page-upright.png`. Unity licensing was available again for this validation.
+
+## Soft mascot body revision
+
+The body silhouette now follows the user's reference: short rounded arms, a broad uninterrupted torso, two thick rounded legs and no narrow wrists, ankles or waist. All five species share this body; animal heads remain distinct. Actual verified Unity screenshot: `Previews/drawing-page-soft-body.png`. Compilation and ten-template paint/leg checks passed.
+
+## Distinct animal heads
+
+Five species-specific heads replace the shared generic face. The accepted body and limb outline is unchanged. Open the same Drawing scene and select each animal. `Previews/animal-species-templates.png` compares the five real generated template textures, in bear/tiger/rabbit/frog/giraffe order.
+
+## Big-head character proportion
+
+The five templates now use a more animated character proportion: heads are 116% of the previous size, while the soft body is narrower and shorter. Feet remain on the same baseline, and rabbit ears and giraffe horns fit inside the canvas. Verified Play-mode screenshot: `Previews/drawing-page-big-head.png`.
+
+The giraffe front muzzle was subsequently reduced and repositioned inside the lower face. `Previews/animal-species-templates.png` contains the latest verified five-animal comparison.
