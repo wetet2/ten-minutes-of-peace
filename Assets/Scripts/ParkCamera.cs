@@ -11,7 +11,16 @@ namespace PeacePark
         public bool InputEnabled=true;
         public bool ShowControls=true;
         Vector3 previous;
+        Vector3 initialFocus;
+        float initialDistance, initialYaw, initialPitch;
 
+        void Awake()
+        {
+            initialFocus = focus;
+            initialDistance = distance;
+            initialYaw = yaw;
+            initialPitch = pitch;
+        }
         void OnEnable() { Apply(); }
         void Update()
         {
@@ -33,16 +42,23 @@ namespace PeacePark
                 focus.z = Mathf.Clamp(focus.z, -12, 12);
             }
             distance = Mathf.Clamp(distance * Mathf.Exp(-Input.mouseScrollDelta.y * .1f), 7, 48);
-            if (Input.GetKeyDown(KeyCode.Home)) ResetView();
             previous = mouse;
-            Apply();
+            if (Input.GetKeyDown(KeyCode.Home)) ResetView();
+            else Apply();
         }
         void Apply()
         {
             transform.rotation = Quaternion.Euler(pitch, yaw, 0);
             transform.position = focus - transform.forward * distance;
         }
-        void ResetView() { focus = new Vector3(0, 1, 0); distance = 30; yaw = 0; pitch = 48; }
+        internal void ResetView()
+        {
+            focus = initialFocus;
+            distance = initialDistance;
+            yaw = initialYaw;
+            pitch = initialPitch;
+            Apply();
+        }
         void OnGUI()
         {
             if(!ShowControls)return;

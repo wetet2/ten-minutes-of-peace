@@ -14,7 +14,10 @@ namespace PeacePark.Editor
         public int callbackOrder=>0;
         public void OnProcessScene(Scene scene,BuildReport report)
         {
-            if(report==null||scene.path!=ParkPlaygroundSetup.ScenePath)return;
+            if(scene.path!=ParkPlaygroundSetup.ScenePath)return;
+            int importedTrees=ParkNaturePack.Apply(scene);
+            if(importedTrees>0)Debug.Log($"NATURE PACK: applied {importedTrees} tree prefabs.");
+            if(report==null)return;
             foreach(var root in scene.GetRootGameObjects())foreach(var renderer in root.GetComponentsInChildren<MeshRenderer>(true))
             {
                 // SurfaceHeight reads the small path mesh once at startup.
@@ -36,7 +39,7 @@ namespace PeacePark.Editor
         {
             string rigPath="Assets/Resources/"+AnimalKinds.RigResource(kind)+".asset";
             var rig=AssetDatabase.LoadAssetAtPath<RabbitRigAsset>(rigPath);
-            int version=RabbitMesh.GeometryVersion(kind);
+            int version=RabbitMesh.GeometryVersion;
             if(rig&&rig.Mesh&&rig.GeometryVersion==version)return;
             Directory.CreateDirectory(Path.GetDirectoryName(rigPath));AssetDatabase.Refresh();
             var go=new GameObject("Bake corrected "+kind+" for player");var probe=new Mesh();

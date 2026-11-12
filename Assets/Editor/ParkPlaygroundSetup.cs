@@ -127,7 +127,7 @@ namespace PeacePark.Editor
             if(!File.Exists(ScenePath))Create();Directory.CreateDirectory("Builds/Windows");
             var report=BuildPipeline.BuildPlayer(new[]{ScenePath},ParkPlayerBuild.WindowsExecutable,BuildTarget.StandaloneWindows64,BuildOptions.CleanBuildCache);
             if(report.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded)throw new System.Exception("Living park build failed: "+report.summary.result);
-            File.Copy("Assets/Resources/Fonts/Pretendard-LICENSE.txt","Builds/Windows/Pretendard-LICENSE.txt",true);
+            File.Copy("Assets/Resources/Fonts/BaskinRobbins-NOTICE.txt","Builds/Windows/BaskinRobbins-NOTICE.txt",true);
         }
     }
 }

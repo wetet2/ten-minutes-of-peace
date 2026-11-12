@@ -119,7 +119,13 @@ namespace PeacePark
                 bool detail=animal!=(int)AnimalKind.Giraffe&&Mathf.Abs(head)<.0038f&&bodyY<.74f;
                 if(animal==(int)AnimalKind.Triceratops&&headY<.63f)detail=false;
 
-                detail|=back&&Mathf.Abs(tail)<.003f;
+                if(back&&animal==(int)AnimalKind.Triceratops)
+                {
+                    // Keep the upper edge where the tail crosses the body, without outlining a closed base.
+                    float tailLineWidth=.006f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.56f,.67f,bodyX));
+                    detail|=bodyY>TriceratopsTailCenterY(bodyX)&&Mathf.Abs(tail)<tailLineWidth;
+                }
+                else detail|=back&&Mathf.Abs(tail)<.003f;
                 if(mask[index]!=0)
                 {
                     if(feature.a>0)lines[index]=feature;
@@ -150,11 +156,10 @@ namespace PeacePark
                     float along=Mathf.Clamp01(Vector2.Dot(offset,axis)/axis.sqrMagnitude);
                     return (offset-axis*along).magnitude-Mathf.Lerp(.025f,.019f,along);
                 case AnimalKind.Triceratops:
-                    var root=new Vector2(.50f,.34f);
-                    var tailAxis=new Vector2(.83f,.23f)-root;
-                    var tailOffset=new Vector2(x,y)-root;
-                    float tailT=Mathf.Clamp01(Vector2.Dot(tailOffset,tailAxis)/tailAxis.sqrMagnitude);
-                    return (tailOffset-tailAxis*tailT).magnitude-Mathf.Lerp(.046f,.020f,tailT);
+                    float tailX=Mathf.Clamp(x,.50f,.86f);
+                    float tailT=Mathf.InverseLerp(.50f,.86f,tailX);
+                    float tailY=TriceratopsTailCenterY(tailX);
+                    return new Vector2(x-tailX,y-tailY).magnitude-Mathf.Lerp(.070f,.009f,tailT);
                 case AnimalKind.Giraffe:
                 case AnimalKind.Elephant:
                     float end=kind==AnimalKind.Giraffe?.618f:.414f;
@@ -162,6 +167,11 @@ namespace PeacePark
                         E(x,y,end,.237f,.021f,.026f));
                 default:return 1f;
             }
+        }
+        static float TriceratopsTailCenterY(float x)
+        {
+            float t=Mathf.InverseLerp(.50f,.86f,x);
+            return Mathf.Lerp(.31f,.218f,Mathf.SmoothStep(0,1,t));
         }
         // Hand-shaped cubic outline: no separate wrist, ankle or protruding foot blobs.
         // Rasterized once so all ten templates share the identical soft body silhouette.

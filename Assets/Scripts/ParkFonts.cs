@@ -4,7 +4,7 @@ namespace PeacePark
 {
     public static class ParkFonts
     {
-        public static Font Regular=>Resources.Load<Font>("Fonts/Pretendard-Regular");
-        public static Font Bold=>Resources.Load<Font>("Fonts/Pretendard-Bold");
+        public static Font Regular=>Resources.Load<Font>("Fonts/BaskinRobbins-Regular");
+        public static Font Bold=>Resources.Load<Font>("Fonts/BaskinRobbins-Bold");
     }
 }

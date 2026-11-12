@@ -19,7 +19,8 @@ namespace PeacePark
         System.Random random;
         float elapsed,phase,pause,blocked;
         Vector3 destination;
-        const float ExitDuration=3.6f,WaveDuration=1.65f;
+        const float ExitDuration=3.75f,WaveDuration=1.65f;
+        const float WanderSpeed=.65f;
 
         public void Initialize(ParkPlayground owner,ParkHouse source,int houseIndex,int id,byte[] front,byte[] back,bool raw=false,AnimalKind kind=AnimalKind.Rabbit)
         {
@@ -88,7 +89,7 @@ namespace PeacePark
             desired.Normalize();var targetRotation=Quaternion.LookRotation(-desired,Vector3.up);
             transform.rotation=Quaternion.RotateTowards(transform.rotation,targetRotation,deltaTime*150);
             if(Quaternion.Angle(transform.rotation,targetRotation)>35){Character.PlayIdlePose();return;}
-            var next=transform.position+desired*(.68f*deltaTime);
+            var next=transform.position+desired*(WanderSpeed*deltaTime);
             next.x=Mathf.Clamp(next.x,park.WalkArea.xMin,park.WalkArea.xMax);next.z=Mathf.Clamp(next.z,park.WalkArea.yMin,park.WalkArea.yMax);
             next.y=park.SurfaceHeight(next);
             if(!park.IsClear(next,this,.82f))

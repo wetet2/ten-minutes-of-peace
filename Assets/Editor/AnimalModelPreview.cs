@@ -85,7 +85,7 @@ namespace PeacePark.Editor
                     Object.DestroyImmediate(review);
                 }
                 if(kind==AnimalKind.Elephant||kind==AnimalKind.Triceratops)
-                    SaveHeadIcon(camera,model,posed,preview);
+                    CaptureModelHead(camera,model,posed,preview);
                 Object.DestroyImmediate(preview);
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(posed);
@@ -101,13 +101,14 @@ namespace PeacePark.Editor
 
         static void CaptureEditedContours()
         {
-            var kinds=new[]{AnimalKind.Tiger,AnimalKind.Giraffe,AnimalKind.Elephant};
+            var views=new[]{(AnimalKind.Tiger,true),(AnimalKind.Giraffe,false),
+                (AnimalKind.Elephant,false),(AnimalKind.Triceratops,true)};
             const int width=360,height=450;
-            var sheet=new Texture2D(width*kinds.Length,height,TextureFormat.RGB24,false);
-            for(int column=0;column<kinds.Length;column++)
+            var sheet=new Texture2D(width*views.Length,height,TextureFormat.RGB24,false);
+            for(int column=0;column<views.Length;column++)
             {
-                var kind=kinds[column];
-                var canvas=new AnimalCanvas((int)kind,kind==AnimalKind.Tiger,useBaked:false);
+                var (kind,back)=views[column];
+                var canvas=new AnimalCanvas((int)kind,back,useBaked:false);
                 try
                 {
                     var outline=canvas.Outline.GetPixels32();
@@ -149,7 +150,7 @@ namespace PeacePark.Editor
             }
         }
 
-        static void SaveHeadIcon(Camera camera,RabbitCharacter model,Mesh posed,GameObject preview)
+        static void CaptureModelHead(Camera camera,RabbitCharacter model,Mesh posed,GameObject preview)
         {
             var head=Object.Instantiate(posed);
             var weights=model.Skin.sharedMesh.boneWeights;
@@ -177,7 +178,7 @@ namespace PeacePark.Editor
             Look(camera,dinosaur?new Vector3(0,3.37f,-.25f):new Vector3(0,2.93f,-.30f),12);
             var icon=new Texture2D(512,512,TextureFormat.RGBA32,false);
             icon.SetPixels32(Render(camera,512,512));icon.Apply();
-            File.WriteAllBytes($"Assets/Resources/Drawing/{model.Kind}Head.png",icon.EncodeToPNG());
+            File.WriteAllBytes($"Previews/{model.Kind}-model-head.png",icon.EncodeToPNG());
             camera.orthographicSize=originalSize;
             camera.backgroundColor=originalBackground;
             preview.GetComponent<MeshFilter>().sharedMesh=posed;

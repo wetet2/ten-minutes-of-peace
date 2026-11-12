@@ -6,13 +6,15 @@
 
 ### 같은 Wi-Fi에서 함께 색칠하기
 
-최신 Windows 실행 파일은 `Builds/Windows-LAN/TenMinutesOfPeace.exe`입니다. 같은 PC에서 실행 파일을 두 번 열어 연결을 확인할 수 있습니다.
+최신 Windows 실행 파일은 `Builds/Windows-TreesAndFlowers/TenMinutesOfPeace.exe`입니다. 같은 PC에서 실행 파일을 두 번 열어 연결을 확인할 수 있습니다.
 
-1. 공원을 띄울 창에서 **기기 연결 → 이 기기에서 공원 열기**를 선택합니다.
-2. 색칠할 창에서 **기기 연결**을 누르고 `127.0.0.1`을 입력한 뒤 **연결하고 색칠**을 누릅니다. 다른 PC라면 호스트에 표시된 같은 Wi-Fi의 IPv4 주소를 입력합니다.
+1. 공원을 띄울 창의 첫 화면에서 **놀이 공간 열기**를 선택합니다. 상단의 **공원**을 누르면 접속 IP와 카메라 조작법이 표시됩니다.
+2. 색칠할 창의 첫 화면에서 **동물 색칠하기**를 선택해 접속 팝업을 엽니다. 같은 PC에서는 `127.0.0.1`을 입력하고, 다른 기기에서는 공원 안내 팝업에 표시된 IP 주소를 입력한 뒤 **연결하고 색칠**을 누릅니다.
 3. 동물을 골라 앞뒷면을 색칠하고 **적용**을 누릅니다. 공원에서 동물이 등장하면 색칠 창에서 새 그림을 시작할 수 있습니다. 전송 확인에 실패하면 현재 그림이 남습니다.
 
 공원 호스트는 TCP 포트 42731을 사용합니다. 원격 접수는 대기 포함 동물 24마리까지이고, 한꺼번에 기다리는 동물은 최대 8마리입니다. 새 동물을 보낼 때는 공원 창과 색칠 창을 모두 최신 버전으로 실행하세요.
+
+공원에서 **카메라 초기화**를 누르면 처음 시점으로 돌아갑니다. 색칠 기기에서는 **연결 끊기**를 누르면 첫 화면으로 돌아갑니다.
 
 ### 둥근 현관 포치
 
@@ -20,17 +22,17 @@
 
 토끼의 등장 높이도 현관 경사와 맞췄습니다. Windows 플레이어 검증에서 양쪽 현관의 이전 사각 발판 제거 및 등장 경로 202개 샘플이 통과했습니다. 실제 렌더는 `Previews/porch-flower-1440p.png`, `Previews/porch-candy-1440p.png`입니다.
 
-### Pretendard 및 애니메이션 공원 표현
+### 배스킨라빈스체 및 애니메이션 공원 표현
 
-Pretendard와 초원 배경은 `ParkPlayground` 장면에 반영되어 있습니다.
+시작·연결·공원·드로잉·토끼 단독 화면은 `Assets/Resources/Fonts`의 배스킨라빈스체 R/B를 사용합니다. 글꼴은 앱에 포함되며 저작권 안내는 `BaskinRobbins-NOTICE.txt`에 있습니다. [공식 글꼴 안내](https://2023brtest.baskinrobbins.co.kr/play/event/view.php?seq=1)
 
-공원·드로잉·토끼 단독 화면은 `Assets/Resources/Fonts`의 Pretendard 1.3.9 Regular/Bold를 사용합니다. OS 설치 글꼴에 의존하지 않으며 글꼴 데이터를 빌드에 포함합니다. SIL OFL 원문을 폰트 폴더와 Windows 배포 폴더에 동봉합니다.
+공원은 `PeacePark/Storybook` 셰이더와 선명한 팔레트를 사용합니다. 잔디에는 월드 좌표의 약한 넓은 색 변화를 사용합니다. 기존 얇은 섬 받침대 가장자리는 숨기고 초원, 외부 길, 중경 나무, 먼 언덕·구름을 연결했습니다. 배경에는 거리 안개를 사용하며 산책 영역은 기존 울타리 안에 유지됩니다.
 
-공원은 `PeacePark/Storybook` 셰이더와 선명한 팔레트를 사용합니다. 회색 반복 노이즈 텍스처를 제거하고 부드러운 명암과 실시간 그림자로 입체감을 만듭니다. 잔디에는 월드 좌표의 약한 넓은 색 변화만 사용합니다. 나무 수관은 큰 삼각 면 대신 매끄러운 굴곡이 있는 메시로 교체했습니다. 기존 얇은 섬 받침대 가장자리는 숨기고 초원, 외부 길, 중경 나무, 먼 언덕·구름을 연결했습니다. 배경에는 거리 안개를 사용하며 산책 영역은 기존 울타리 안에 유지됩니다.
+`Assets/Trees,Flowers`와 `Assets/Pack_FREE_Trees`에 두 팩을 가져오면 Play 모드와 Windows 빌드에서 DHILRUBA 나무 70그루와 OlyPoly 열매나무 14그루가 표시됩니다. OlyPoly 팩만 있으면 84그루 모두 그 팩의 나무를 쓰며, 팩이 없는 체크아웃에서는 기본 나무가 표시됩니다. [Trees & Flowers (Low Poly)](https://assetstore.unity.com/packages/3d/vegetation/trees/trees-flowers-low-poly-279164) · [FREE Low Poly Trees Pack](https://assetstore.unity.com/packages/3d/vegetation/trees/free-low-poly-trees-pack-273724)
 
 새 아트 생성 코드는 `Assets/Editor/ParkArtDirection.cs`, 생성 에셋은 `Assets/StorybookGenerated`입니다. `Peace Park > Apply Storybook Art`는 현재 아트 방향을 다시 적용하므로 수동 아트 수정 후에는 실행 여부에 주의하세요. 원본 `ParkPolished` 장면과 원본 머티리얼은 보존했습니다. 현재 아트는 코드로 생성한 프로토타입이며 전문 제작된 동물의 숲 수준의 완성 에셋을 재현한 것은 아닙니다.
 
-검증: Windows 플레이어에서 Pretendard 한글 글리프, 연속 배경 및 토끼 5마리의 등장·산책·발 접지가 통과했습니다. 실제 창에서도 공원/드로잉 전환과 글꼴 표시를 확인했습니다. 실제 2560×1440 카메라 렌더: `Previews/park-storybook-1440p.png`, `Previews/park-storybook-door-1440p.png`.
+Windows 플레이어에서 한글 글리프, 연속 배경 및 토끼 5마리의 등장·산책·발 접지를 검증했습니다. 2560×1440 카메라 렌더는 `Previews/park-storybook-1440p.png`와 `Previews/park-storybook-door-1440p.png`에서 볼 수 있습니다.
 
 ### Windows 실행 파일
 
@@ -42,7 +44,7 @@ GPU 스키닝과 고정 배경 정적 배칭을 사용합니다. 기본 모드�
 
 Unity에서 `Assets/Scenes/ParkPlayground.unity`를 열고 Play를 누르세요. 메뉴 `Peace Park > Open Living Park`로도 열 수 있습니다. 기존 공원과 토끼 단독 실험 장면은 보존했습니다.
 
-1. 공원 오른쪽 위의 **동물 색칠하기**를 누릅니다.
+1. 첫 화면에서 **놀이 공간 열기**를 고른 뒤, 공원 오른쪽 위의 **동물 색칠하기**를 누릅니다.
 2. 동물 앞·뒷면을 색칠하고 **적용**을 누릅니다. 적용 버튼은 3초 동안 다시 누를 수 없습니다.
 3. 공원으로 돌아오면 무작위로 선택된 꽃집 또는 과자집의 문이 열리고, 동물이 걸어 나와 집 앞에서 한 번 손을 흔든 뒤 산책합니다.
 4. 다시 색칠하면 새 동물이 추가됩니다. 색칠 도중 **공원 보기**로 돌아갈 수도 있습니다.

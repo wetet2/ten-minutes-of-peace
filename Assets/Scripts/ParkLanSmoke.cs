@@ -56,7 +56,15 @@ namespace PeacePark
 
         static IEnumerator RunHost(ParkPlayground park)
         {
-            Require(park.Lan.StartHost(), "Host failed to listen.");
+            Require(park.IsSelectingMode&&!park.Lan.IsHosting&&!park.IsDrawing, "The first screen is not the mode selector.");
+            Require(park.ChooseHostMode()&&park.IsViewingPark&&park.Lan.IsHosting, "Host choice did not open the park.");
+            var camera=park.OrbitCamera.GetComponent<Camera>();
+            Require(camera.cullingMask!=0&&park.OrbitCamera.InputEnabled, "The host park is not rendered or controllable.");
+            park.OpenParkInfo();
+            Require(park.IsParkInfoOpen&&park.IsViewingPark&&park.Lan.IsHosting&&camera.cullingMask!=0&&
+                !park.OrbitCamera.InputEnabled&&park.Lan.HostAddresses.Contains("127.0.0.1"), "Park information did not open over the live park.");
+            park.CloseDialog();
+            Require(!park.IsParkInfoOpen&&park.OrbitCamera.InputEnabled, "Closing park information did not restore camera controls.");
             Debug.Log("LAN TEST HOST READY");
             yield return WaitFor(() => park.SubmissionCount >= AnimalKinds.Count);
             yield return new WaitForSecondsRealtime(1);
@@ -78,18 +86,26 @@ namespace PeacePark
                 received.Add(rabbit.Character.Kind);
             }
             Require(received.Count == AnimalKinds.Count, "Artwork or species was mixed across submissions.");
+            park.ReturnToModeSelection();
+            Require(park.IsSelectingMode&&!park.Lan.IsHosting&&camera.cullingMask==0,
+                "Returning to the mode selector did not stop the host and park rendering.");
             Debug.Log($"LAN HOST PASS: {received.Count} species reached the park with independent paintings, exited, waved and wandered.");
         }
 
         static IEnumerator RunClient(ParkPlayground park)
         {
             var camera = park.OrbitCamera.GetComponent<Camera>();
-            int parkMask = camera.cullingMask;
-            bool parkMsaa = camera.allowMSAA;
+            Require(park.IsSelectingMode&&!park.IsDrawing&&camera.cullingMask==0, "The first screen is not the mode selector.");
+            park.ChooseDrawingMode();
+            Require(park.IsConnecting&&park.IsSelectingMode&&!park.IsDrawing, "The connection popup replaced the start screen.");
+            Require(!park.Lan.BeginJoin("invalid")&&!string.IsNullOrEmpty(park.Lan.Message), "Invalid address was not reported.");
+            park.CloseDialog();
+            Require(park.IsSelectingMode&&!park.IsConnecting&&string.IsNullOrEmpty(park.Lan.Message), "Closing the popup did not restore mode selection.");
+            park.ChooseDrawingMode();
             Require(park.Lan.BeginJoin("localhost"), "Client failed to start joining.");
             yield return WaitFor(() => park.Lan.IsJoined);
-            Require(park.IsDrawing, "Join did not open the drawing page.");
-            Require(parkMask != 0 && camera.cullingMask == 0 && !camera.allowMSAA,
+            Require(park.IsDrawing&&!park.IsConnecting&&!park.IsSelectingMode, "Join did not open the drawing page and dismiss the popup.");
+            Require(camera.cullingMask == 0 && !camera.allowMSAA,
                 "The coloring client is still rendering the park.");
             Paint(park.Drawing, RedFor(AnimalKind.Rabbit));
             Require(park.Drawing.ApplyDrawing() && !park.Drawing.ApplyDrawing(), "Apply or cooldown failed.");
@@ -116,11 +132,10 @@ namespace PeacePark
                 yield return WaitFor(() => pending.All(task => task.IsCompleted));
                 Require(pending.All(task => task.Result == ParkLan.Accepted), "One or more concurrent requests were not acknowledged.");
             }
-            park.Lan.Disconnect();
-            park.ShowPark();
-            Require(camera.cullingMask == parkMask && camera.allowMSAA == parkMsaa,
-                "Returning to the park did not restore its camera settings.");
-            Debug.Log("LAN RENDER PASS: 3D layers and MSAA are off while coloring and restored when returning to the park.");
+            park.ReturnToModeSelection();
+            Require(park.IsSelectingMode&&!park.Lan.IsJoined&&!park.IsDrawing&&camera.cullingMask==0,
+                "Disconnect did not return to mode selection.");
+            Debug.Log("MODE SELECTION PASS: startup selector, connection popup, close, remote drawing and disconnect.");
             Debug.Log($"LAN CLIENT PASS: joined localhost, sent all {AnimalKinds.Count} species and received acknowledgements, including repeated request IDs.");
         }
 

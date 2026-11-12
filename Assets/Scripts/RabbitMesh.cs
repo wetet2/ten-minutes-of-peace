@@ -14,11 +14,8 @@ namespace PeacePark
         const float HeadCenterY=2.85f;
         const float HeadDepth=.96f;
         const float PreviousHeadDepth=.62f;
-        public static int GeometryVersion(AnimalKind kind)
-        {
-            if(kind==AnimalKind.Tiger||kind==AnimalKind.Triceratops)return 5;
-            return kind==AnimalKind.Elephant?4:3;
-        }
+        // The baked rigs include ground-contact samples for the shared walking pose.
+        public const int GeometryVersion=9;
         public const float ShoulderHeight=2f;
         const float LegScale=.9f;
         const float TemplateHipHeight=1.26f;
@@ -101,10 +98,12 @@ namespace PeacePark
             int side=p.x<0?-1:1;
             if(p.y<1.61f&&Mathf.Abs(p.x)<.75f)
             {
-                // The pelvis stays on the body bone. Inner thighs acquire leg influence gradually,
-                // without a left/right sign discontinuity through the centre of the crotch.
-                float leg=(1-Smooth(.76f,1.54f,p.y))*Smooth(.06f,.29f,Mathf.Abs(p.x));
-                return new BoneWeight{boneIndex0=0,weight0=1-leg,boneIndex1=side<0?4:5,weight1=leg};
+                // Keep the whole foot on its leg bone. Fade in the inner-thigh blend above the foot.
+                int legBone=side<0?4:5;
+                if(p.y<=.55f)return new BoneWeight{boneIndex0=legBone,weight0=1};
+                float innerThigh=Smooth(.06f,.29f,Mathf.Abs(p.x));
+                float leg=(1-Smooth(.76f,1.54f,p.y))*Mathf.Lerp(1,innerThigh,Smooth(.55f,.95f,p.y));
+                return new BoneWeight{boneIndex0=0,weight0=1-leg,boneIndex1=legBone,weight1=leg};
             }
             float region=Smooth(-.09f,.09f,Torso(p)-Arm(p,side));
             float head=Smooth(2.15f,2.55f,p.y);

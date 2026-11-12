@@ -68,7 +68,7 @@ namespace PeacePark
         void Build()
         {
             rigAsset=Resources.Load<RabbitRigAsset>(AnimalKinds.RigResource(Kind));
-            if(rigAsset&&rigAsset.GeometryVersion!=RabbitMesh.GeometryVersion(Kind))rigAsset=null;
+            if(rigAsset&&rigAsset.GeometryVersion!=RabbitMesh.GeometryVersion)rigAsset=null;
             if(rigAsset&&!cache.ContainsKey(Kind))
             {
                 cache[Kind]=new Geometry
@@ -165,9 +165,10 @@ namespace PeacePark
         void WalkPose(float phase)
         {
             if(correctiveReady){skin.SetBlendShapeWeight(0,0);skin.SetBlendShapeWeight(1,1+Mathf.Repeat(phase,Mathf.PI*2)/(Mathf.PI*2)*99);}
-            float swing=Mathf.Sin(phase)*15;
-            leftArm.localRotation=Quaternion.Euler(swing,0,40);rightArm.localRotation=Quaternion.Euler(-swing,0,-40);
-            leftLeg.localRotation=Quaternion.Euler(-swing,0,0);rightLeg.localRotation=Quaternion.Euler(swing,0,0);
+            float cycle=Mathf.Sin(phase);
+            float armSwing=cycle*15,legSwing=cycle*22;
+            leftArm.localRotation=Quaternion.Euler(armSwing,0,40);rightArm.localRotation=Quaternion.Euler(-armSwing,0,-40);
+            leftLeg.localRotation=Quaternion.Euler(-legSwing,0,0);rightLeg.localRotation=Quaternion.Euler(legSwing,0,0);
             model.localPosition=new Vector3(0,Mathf.Abs(Mathf.Sin(phase))*.035f,0);
             body.localRotation=Quaternion.Euler(0,0,Mathf.Sin(phase)*1.5f);head.localRotation=Quaternion.Euler(0,0,-Mathf.Sin(phase)*1.5f);
         }

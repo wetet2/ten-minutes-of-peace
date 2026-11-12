@@ -5,27 +5,27 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
 
 namespace PeacePark
 {
     internal sealed class ParkLanPanel : IDisposable
     {
         readonly ParkPlayground park;
-        readonly DrawingSkin skin = new DrawingSkin();
         readonly CancellationTokenSource stop = new CancellationTokenSource();
         ParkLan.Host host;
         IPAddress remote;
         IPAddress joining;
         Task<byte> probe, send;
+        CancellationTokenSource probeCancellation;
         byte[] lastFront, lastBack;
         AnimalKind lastKind;
         Guid draftId;
-        string address = "127.0.0.1";
         string hostAddresses;
         string message = "";
-        GUIStyle title, label, button, input;
-        public bool IsOpen { get; private set; }
+        internal string Message => message;
+        internal string HostAddresses => hostAddresses;
+        internal bool IsJoining => probe != null;
+        public bool IsHosting => host != null;
         public bool IsJoined => remote != null;
         public bool LastSendAccepted { get; private set; }
 
@@ -38,7 +38,6 @@ namespace PeacePark
             {
                 host = new ParkLan.Host();
                 hostAddresses = GetAddresses();
-                message = "공원을 열었어요. 색칠 기기에서 위 주소로 연결하세요.";
                 return true;
             }
             catch (SocketException)
@@ -58,15 +57,17 @@ namespace PeacePark
                     .Select(entry => entry.Address)
                     .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
                     .Select(ip => ip.ToString())
-                    .Distinct();
-                return string.Join(" · ", addresses.Prepend("127.0.0.1"));
+                    .Distinct()
+                    .ToArray();
+                return addresses.Length == 0 ? "같은 PC  127.0.0.1"
+                    : "다른 기기  " + string.Join(" · ", addresses) + "\n같은 PC  127.0.0.1";
             }
-            catch (NetworkInformationException) { return "127.0.0.1"; }
+            catch (NetworkInformationException) { return "같은 PC  127.0.0.1"; }
         }
 
         internal bool BeginJoin(string value)
         {
-            if (probe != null || host != null || remote != null) return false;
+            if (!park.IsConnecting || probe != null || host != null || remote != null) return false;
             value = value.Trim();
             if (string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)) value = "127.0.0.1";
             if (!IPAddress.TryParse(value, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork)
@@ -76,7 +77,8 @@ namespace PeacePark
             }
             joining = ip;
             message = "공원에 연결하는 중…";
-            probe = ParkLan.Probe(ip, stop.Token);
+            probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+            probe = ParkLan.Probe(ip, probeCancellation.Token);
             return true;
         }
 
@@ -113,10 +115,11 @@ namespace PeacePark
             {
                 byte result = Result(probe);
                 probe = null;
+                probeCancellation.Dispose();
+                probeCancellation = null;
                 if (result == ParkLan.Accepted)
                 {
                     remote = joining;
-                    IsOpen = false;
                     park.ShowDrawing();
                     park.Drawing.RemoteApply = SendDrawing;
                     park.Drawing.ConnectionStatus = "공원에 연결됐어요";
@@ -141,80 +144,45 @@ namespace PeacePark
             else park.Drawing.ConnectionStatus = "전송을 확인하지 못했어요. 다시 적용해 주세요";
         }
 
-        public void Disconnect()
+        public void ClearMessage() => message = "";
+
+        internal void CancelJoin()
         {
+            CancelProbe();
+            joining = null;
+            ClearMessage();
+        }
+
+        public void ResetSession()
+        {
+            CancelJoin();
+            host?.Dispose();
+            host = null;
+            hostAddresses = null;
             remote = null;
             lastFront = lastBack = null;
+            LastSendAccepted = false;
             park.Drawing.RemoteApply = null;
             park.Drawing.ConnectionStatus = null;
         }
 
-        public void Draw(float width)
+        void CancelProbe()
         {
-            if (title == null)
-            {
-                title = new GUIStyle(GUI.skin.label) { font = ParkFonts.Bold, fontSize = 29, alignment = TextAnchor.MiddleCenter };
-                title.normal.textColor = new Color32(80, 62, 47, 255);
-                label = new GUIStyle(title) { font = ParkFonts.Regular, fontSize = 21, wordWrap = true };
-                button = new GUIStyle(title) { fontSize = 22 };
-                input = new GUIStyle(GUI.skin.textField) { font = ParkFonts.Regular, fontSize = 25, alignment = TextAnchor.MiddleCenter };
-            }
-            if (!IsOpen)
-            {
-                var open = new Rect(width - 415, 18, 158, 60);
-                if (Button(open, host == null ? "기기 연결" : "공원 열림", false))
-                {
-                    IsOpen = true;
-                    park.OrbitCamera.InputEnabled = false;
-                }
-                return;
-            }
-
-            float left = (width - 620) / 2;
-            skin.Draw(new Rect(left, 240, 620, 404), new Color32(255, 247, 227, 255), 32);
-            GUI.Label(new Rect(left + 20, 257, 580, 48), "같은 Wi-Fi에서 함께 색칠하기", title);
-            if (host != null)
-            {
-                GUI.Label(new Rect(left + 28, 310, 564, 92), "공원 주소\n" + hostAddresses, label);
-                if (Button(new Rect(left + 140, 423, 340, 56), "공원 호스트 끄기", false))
-                {
-                    host.Dispose();
-                    host = null;
-                    message = "";
-                }
-            }
-            else
-            {
-                GUI.enabled = probe == null;
-                if (Button(new Rect(left + 40, 316, 540, 57), "이 기기에서 공원 열기", true)) StartHost();
-                GUI.Label(new Rect(left + 35, 388, 550, 32), "색칠 기기에서는 공원 IP 주소를 입력하세요", label);
-                address = GUI.TextField(new Rect(left + 42, 428, 326, 52), address, 45, input);
-                if (Button(new Rect(left + 383, 428, 195, 52), "연결하고 색칠", true)) BeginJoin(address);
-                GUI.enabled = true;
-            }
-            GUI.Label(new Rect(left + 27, 491, 566, 64), message, label);
-            GUI.enabled = probe == null;
-            if (Button(new Rect(left + 215, 566, 190, 55), "닫기", false))
-            {
-                IsOpen = false;
-                park.OrbitCamera.InputEnabled = true;
-            }
-            GUI.enabled = true;
-        }
-
-        bool Button(Rect rect, string text, bool accent)
-        {
-            skin.Draw(rect, accent ? new Color32(165, 217, 112, 255) : new Color32(245, 232, 199, 255), 23, accent);
-            GUI.Label(rect, text, button);
-            return GUI.Button(rect, GUIContent.none, GUIStyle.none);
+            if (probe == null) return;
+            _ = probe.ContinueWith(task => { _ = task.Exception; },
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            probe = null;
+            probeCancellation.Cancel();
+            probeCancellation.Dispose();
+            probeCancellation = null;
         }
 
         public void Dispose()
         {
+            CancelProbe();
             host?.Dispose();
             stop.Cancel();
             stop.Dispose();
-            skin.Dispose();
         }
     }
 }

@@ -29,11 +29,27 @@ namespace PeacePark
             while(!park||!park.IsReady)
             {park=FindAnyObjectByType<ParkPlayground>();if(Time.realtimeSinceStartup>deadline)throw new Exception("Living park did not initialize");yield return null;}
             park.ManualSimulation=true;
-            Require(ParkFonts.Regular&&ParkFonts.Bold&&ParkFonts.Regular.name.Contains("Pretendard"),"Bundled Pretendard fonts missing");
-            foreach(char letter in "앞모습뒷모습적용공원토끼")Require(ParkFonts.Regular.HasCharacter(letter)&&ParkFonts.Bold.HasCharacter(letter),"Korean glyph missing: "+letter);
+            var orbit=park.OrbitCamera;
+            var initialPosition=orbit.transform.position;
+            var initialRotation=orbit.transform.rotation;
+            float initialZoom=orbit.distance;
+            orbit.focus+=Vector3.right;
+            orbit.distance=15;
+            orbit.yaw=75;
+            orbit.pitch=20;
+            orbit.transform.SetPositionAndRotation(Vector3.zero,Quaternion.identity);
+            orbit.ResetView();
+            Require(Vector3.Distance(orbit.transform.position,initialPosition)<.0001f&&
+                Quaternion.Angle(orbit.transform.rotation,initialRotation)<.01f&&orbit.distance==initialZoom,
+                "Camera reset did not restore the scene's initial position, angle and zoom.");
+            Debug.Log("CAMERA RESET PASS: restored the scene's initial position, angle and zoom.");
+            var regular=ParkFonts.Regular;var bold=ParkFonts.Bold;
+            Require(regular&&bold&&regular.name=="BaskinRobbins-Regular"&&bold.name=="BaskinRobbins-Bold","Bundled Baskin Robbins fonts missing");
+            foreach(char letter in "애들아놀라빠분만쉰다놀이공간열기동물색칠하기연결앞모습뒷적용원트리케라톱스")
+                Require(regular.HasCharacter(letter)&&bold.HasCharacter(letter),"Korean glyph missing: "+letter);
             Require(GameObject.Find("Storybook countryside"),"Continuous countryside missing");
             Require(!GameObject.Find("Earth edge"),"Display plinth still visible");
-            Debug.Log("STORYBOOK FONT/ART PASS: bundled Pretendard Regular/Bold contain all UI glyphs; continuous landscape replaces visible plinth.");
+            Debug.Log("STORYBOOK FONT/ART PASS: bundled Baskin Robbins Regular/Bold render Korean UI glyphs; continuous landscape replaces visible plinth.");
             foreach(var house in park.Houses)
             {
                 Require(house.HasRoundedPorch&&!house.transform.Find("Step")&&!house.transform.Find("Cottage walkway"),"Old rectangular porch still present");
@@ -73,18 +89,63 @@ namespace PeacePark
                 yield return Capture(house.name=="Flower cottage"?"porch-flower-1440p.png":"porch-candy-1440p.png");
             }
             Camera.main.transform.position=new Vector3(0,22,-25);Camera.main.transform.LookAt(new Vector3(0,1,0));
-            var contactProbe=new Mesh();float maxGap=0;
+            var contactProbe=new Mesh();float maxGap=0,maxFootError=0;
+            var walkingSkin=first.Character.Skin;
+            var bindVertices=walkingSkin.sharedMesh.vertices;
+            var feet=new[]{new System.Collections.Generic.List<int>(),new System.Collections.Generic.List<int>()};
+            var posedVertices=new System.Collections.Generic.List<Vector3>();
+            for(int i=0;i<first.Character.SkinVertexCount;i++)
+                if(bindVertices[i].y<=.45f)feet[bindVertices[i].x<0?0:1].Add(i);
             try
             {
+                first.Character.PlayIdlePose();
+                walkingSkin.BakeMesh(contactProbe,false);
+                var idleVertices=contactProbe.vertices;
+                var anchors=new int[2,3];
+                var forwardLimit=new[]{float.PositiveInfinity,float.PositiveInfinity};
+                var backwardLimit=new[]{float.NegativeInfinity,float.NegativeInfinity};
+                for(int foot=0;foot<feet.Length;foot++)
+                {
+                    Require(feet[foot].Count>0,"No foot vertices found for walking validation");
+                    for(int j=0;j<3;j++)anchors[foot,j]=feet[foot][0];
+                    foreach(int vertex in feet[foot])
+                    {
+                        var point=bindVertices[vertex];
+                        if(point.z<bindVertices[anchors[foot,0]].z)anchors[foot,0]=vertex;
+                        if(point.z>bindVertices[anchors[foot,1]].z)anchors[foot,1]=vertex;
+                        if(Mathf.Abs(point.x)>Mathf.Abs(bindVertices[anchors[foot,2]].x))anchors[foot,2]=vertex;
+                    }
+                }
                 for(int i=0;i<=128;i++)
                 {
-                    first.Character.PlayWalkingPose(i*Mathf.PI*2/128);first.Character.Skin.BakeMesh(contactProbe,false);contactProbe.RecalculateBounds();
+                    first.Character.PlayWalkingPose(i*Mathf.PI*2/128);walkingSkin.BakeMesh(contactProbe,false);contactProbe.RecalculateBounds();
                     maxGap=Mathf.Max(maxGap,Mathf.Abs(contactProbe.bounds.min.y));
+                    contactProbe.GetVertices(posedVertices);
+                    for(int foot=0;foot<feet.Length;foot++)
+                    {
+                        float toeZ=posedVertices[anchors[foot,0]].z;
+                        forwardLimit[foot]=Mathf.Min(forwardLimit[foot],toeZ);
+                        backwardLimit[foot]=Mathf.Max(backwardLimit[foot],toeZ);
+                    }
+                    // Within-foot distances isolate deformation from rotation and movement.
+                    for(int foot=0;foot<feet.Length;foot++)
+                    foreach(int vertex in feet[foot])
+                    for(int j=0;j<3;j++)
+                    {
+                        int anchor=anchors[foot,j];
+                        float restLength=Vector3.Distance(idleVertices[vertex],idleVertices[anchor]);
+                        float posedLength=Vector3.Distance(posedVertices[vertex],posedVertices[anchor]);
+                        maxFootError=Mathf.Max(maxFootError,Mathf.Abs(posedLength-restLength));
+                    }
                 }
+                for(int foot=0;foot<feet.Length;foot++)
+                    Require(backwardLimit[foot]-forwardLimit[foot]>.25f,"Foot does not swing with its leg");
             }
             finally{Destroy(contactProbe);}
             Require(maxGap<.003f,"Walking feet do not contact floor: "+maxGap);
+            Require(maxFootError<.0001f,"Feet deform during walking: "+maxFootError);
             Debug.Log("FOOT CONTACT PASS: 129 walking poses, maximum ground error "+maxGap.ToString("F5")+" world units.");
+            Debug.Log($"FOOT SHAPE PASS: {feet[0].Count+feet[1].Count} foot vertices retain their shape across 129 walking poses, maximum error {maxFootError:F6}.");
             park.ManualSimulation=false;
             // Warm up before reporting paced frame times; exclude submission/PNG work.
             yield return new WaitForSecondsRealtime(2);
