@@ -6,13 +6,17 @@ namespace PeacePark
     // Rasterize soft bevels and contact shadows once, not on every GUI repaint.
     public sealed class DrawingSkin
     {
-        readonly Dictionary<string,Texture2D> cache=new Dictionary<string,Texture2D>();
+        readonly Dictionary<(int,int,float,uint,bool),Texture2D> cache=new Dictionary<(int,int,float,uint,bool),Texture2D>();
         public void Draw(Rect r,Color color,float radius,bool glossy=false)
         {
-            string key=$"{r.width:F0}:{r.height:F0}:{radius:F0}:{ColorUtility.ToHtmlStringRGBA(color)}:{glossy}";
+            if(Event.current.type!=EventType.Repaint)return;
+            int w=Mathf.CeilToInt(r.width),h=Mathf.CeilToInt(r.height);
+            Color32 rgba=color;
+            uint packed=(uint)(rgba.r<<24|rgba.g<<16|rgba.b<<8|rgba.a);
+            var key=(w,h,radius,packed,glossy);
             if(!cache.TryGetValue(key,out var texture))
             {
-                const int pad=12;int w=Mathf.CeilToInt(r.width),h=Mathf.CeilToInt(r.height);
+                const int pad=12;
                 texture=new Texture2D(w+pad*2,h+pad*2,TextureFormat.RGBA32,false){filterMode=FilterMode.Bilinear};
                 var pixels=new Color[(w+pad*2)*(h+pad*2)];
                 for(int y=0;y<h+pad*2;y++)for(int x=0;x<w+pad*2;x++)
@@ -37,7 +41,7 @@ namespace PeacePark
                     }
                     pixels[y*(w+pad*2)+x]=c;
                 }
-                texture.SetPixels(pixels);texture.Apply();cache.Add(key,texture);
+                texture.SetPixels(pixels);texture.Apply(false,true);cache.Add(key,texture);
             }
             GUI.DrawTexture(new Rect(r.x-12,r.y-12,r.width+24,r.height+24),texture);
         }

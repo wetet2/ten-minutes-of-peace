@@ -42,11 +42,27 @@ namespace PeacePark.Editor
         }
         public static void Validate()
         {
+            DrawingTemplateBaker.Bake();
             Open();
-            var sheet=new Texture2D(1800,450,TextureFormat.RGB24,false);
-            for(int animal=0;animal<5;animal++)for(int side=0;side<2;side++)
+            var page=Object.FindAnyObjectByType<DrawingPage>();
+            page.SelectAnimal((int)AnimalKind.Rabbit);
+            var timer=System.Diagnostics.Stopwatch.StartNew();
+            page.SelectAnimal((int)AnimalKind.Tiger);
+            double bakedSwitch=timer.Elapsed.TotalMilliseconds;
+            timer.Restart();
+            var proceduralFront=new AnimalCanvas((int)AnimalKind.Tiger,false,useBaked:false);
+            var proceduralBack=new AnimalCanvas((int)AnimalKind.Tiger,true,useBaked:false);
+            double proceduralSwitch=timer.Elapsed.TotalMilliseconds;
+            proceduralFront.Dispose();proceduralBack.Dispose();
+            Debug.Log($"DRAWING TAB SAMPLE: tiger front and back, baked switch {bakedSwitch:F1} ms, procedural generation {proceduralSwitch:F1} ms.");
+            var sheet=new Texture2D(360*AnimalKinds.Count,450,TextureFormat.RGB24,false);
+            for(int animal=0;animal<AnimalKinds.Count;animal++)for(int side=0;side<2;side++)
             {
                 var canvas=new AnimalCanvas(animal,side==1);
+                if(animal==(int)AnimalKind.Triceratops)
+                    for(int y=(int)(.49f*AnimalCanvas.Height);y<.64f*AnimalCanvas.Height;y++)
+                        if(!canvas.IsInside(AnimalCanvas.Width/2,y))
+                            throw new System.Exception("Triceratops head is disconnected from its body in the canvas.");
                 if(side==0)
                 {
                     var paint=canvas.Paint.GetPixels32();var outline=canvas.Outline.GetPixels32();
@@ -66,13 +82,18 @@ namespace PeacePark.Editor
                 canvas.Dispose();
             }
             sheet.Apply();Directory.CreateDirectory("Previews");File.WriteAllBytes("Previews/animal-species-templates.png",sheet.EncodeToPNG());Object.DestroyImmediate(sheet);
-            var page=Object.FindAnyObjectByType<DrawingPage>();
             page.SelectAnimal(2);
             if(!page.ApplyDrawing()||page.ApplyDrawing())throw new System.Exception("Apply lock failed");
             page.Front.Stroke(new Vector2(480,360),new Vector2(520,400),40,Color.red);
             page.SelectAnimal(0);
             if(page.Front.Paint.GetPixel(480,360).g<.99f)throw new System.Exception("Animal switch retained paint");
-            Debug.Log("DRAWING CHECKS PASSED: ten masks, stroke clipping, apply cooldown, reset on animal selection.");
+            Debug.Log($"DRAWING CHECKS PASSED: {AnimalKinds.Count*2} masks, stroke clipping, apply cooldown, reset on animal selection.");
+        }
+
+        public static void ValidateAndBuild()
+        {
+            Validate();
+            ParkPlaygroundSetup.BuildWindows();
         }
     }
 }

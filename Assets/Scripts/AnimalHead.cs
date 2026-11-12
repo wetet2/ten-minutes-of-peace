@@ -17,6 +17,13 @@ namespace PeacePark
         {float h=Mathf.Clamp01(.5f+.5f*(b-a)/k);return Mathf.Lerp(b,a,h)-k*h*(1-h);}
         static float Line(float x,float y,float ax,float ay,float bx,float by)
         {var p=new Vector2(x-ax,y-ay);var v=new Vector2(bx-ax,by-ay);return (p-v*Mathf.Clamp01(Vector2.Dot(p,v)/v.sqrMagnitude)).magnitude;}
+        static float Horn(float x,float y,Vector2 from,Vector2 to,float baseRadius,float tipRadius)
+        {
+            var axis=to-from;
+            var offset=new Vector2(x,y)-from;
+            float along=Mathf.Clamp01(Vector2.Dot(offset,axis)/axis.sqrMagnitude);
+            return (offset-axis*along).magnitude-Mathf.Lerp(baseRadius,tipRadius,along);
+        }
         static void Layer(ref Color c,Color color,float coverage)
         {float a=Mathf.Clamp01(coverage);if(a<=0)return;float total=a+c.a*(1-a);var rgb=(new Vector3(color.r,color.g,color.b)*a+new Vector3(c.r,c.g,c.b)*c.a*(1-a))/total;c=new Color(rgb.x,rgb.y,rgb.z,total);}
         static void Ring(ref Color c,float d,float thickness=.0028f){Layer(ref c,ink,(thickness-Mathf.Abs(d))*1200+.5f);}
@@ -80,9 +87,10 @@ namespace PeacePark
                     Fill(ref face,E(x,y,.471f,.725f,.006f,.009f),ink);Fill(ref face,E(x,y,.529f,.725f,.006f,.009f),ink);
                     if(y<.703f)Ring(ref face,E(x,y,.5f,.703f,.155f,.05f),.0028f);
                     break;
-                default: // Giraffe: narrow forehead, leaf ears, capped ossicones and a small soft muzzle.
-                    shape=E(x,y,.5f,.756f,.19f,.178f);
-                    shape=Join(shape,E(x,y,.5f,.655f,.22f,.08f));
+                case 4: // Giraffe: a long neck, leaf ears, capped ossicones and a soft muzzle.
+                    shape=E(x,y,.5f,.777f,.186f,.151f);
+                    shape=Join(shape,E(x,y,.5f,.690f,.182f,.066f),.022f);
+                    shape=Join(shape,E(x,y,.5f,.573f,.080f,.124f),.025f);
                     for(int side=-1;side<=1;side+=2)
                     {
                         shape=Join(shape,E(x,y,.5f+side*.225f,.844f,.09f,.04f,side*-.35f));
@@ -94,12 +102,67 @@ namespace PeacePark
                     Ring(ref face,E(x,y,.5f,.877f,.039f,.027f));
                     Ring(ref face,E(x,y,.378f,.837f,.019f,.025f,-.3f));Ring(ref face,E(x,y,.622f,.837f,.019f,.025f,.3f));
                     if(back)break;
-                    // The muzzle sits inside the lower face. It must not span from
-                    // cheek to cheek or read like a second oversized head outline.
-                    Ring(ref face,E(x,y,.5f,.666f,.135f,.052f));
-                    Eye(ref face,x,y,.416f,.771f);Eye(ref face,x,y,.584f,.771f);
-                    Fill(ref face,E(x,y,.455f,.681f,.008f,.011f,-.2f),ink);Fill(ref face,E(x,y,.545f,.681f,.008f,.011f,.2f),ink);
-                    Smile(ref face,x,y,.5f,.65f,.042f);
+                    Eye(ref face,x,y,.416f,.783f);Eye(ref face,x,y,.584f,.783f);
+                    Fill(ref face,E(x,y,.455f,.705f,.008f,.009f,-.2f),ink);Fill(ref face,E(x,y,.545f,.705f,.008f,.009f,.2f),ink);
+                    Smile(ref face,x,y,.5f,.689f,.042f);
+                    if(y<.656f&&Mathf.Abs(x-.5f)<.083f)
+                        Ring(ref face,E(x,y,.5f,.682f,.117f,.053f),.0019f);
+                    break;
+                case 5: // Elephant: large ears and a long trunk overlapping the chest.
+                    shape=E(x,y,.5f,.740f,.211f,.158f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        shape=Join(shape,E(x,y,.5f+side*.222f,.735f,.105f,.132f,side*-.23f));
+                        if(!back)
+                        {
+                            Ring(ref face,E(x,y,.5f+side*.225f,.738f,.072f,.099f,side*-.23f));
+                            Eye(ref face,x,y,.5f+side*.107f,.771f,.014f);
+                        }
+                    }
+                    if(back)break;
+                    float trunkY=Mathf.Clamp(y,.522f,.727f);
+                    float trunkRadius=Mathf.Lerp(.033f,.052f,Mathf.InverseLerp(.522f,.727f,trunkY));
+                    float trunk=new Vector2(x-.5f,y-trunkY).magnitude-trunkRadius;
+                    shape=Join(shape,trunk,.015f);
+                    float outline=Mathf.Clamp01((.0022f-Mathf.Abs(trunk))*1200+.5f);
+                    Layer(ref face,ink,outline*Mathf.Clamp01((.730f-y)/.029f));
+                    Fill(ref face,E(x,y,.487f,.514f,.007f,.008f),ink);
+                    Fill(ref face,E(x,y,.513f,.514f,.007f,.008f),ink);
+                    break;
+                case 6: // Triceratops: scalloped frill, two brow horns and one nose horn.
+                    float frill=E(x,y,.5f,.797f,.302f,.151f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        frill=Join(frill,E(x,y,.5f+side*.232f,.743f,.094f,.101f,side*-.25f),.024f);
+                        frill=Join(frill,E(x,y,.5f+side*.263f,.860f,.067f,.055f),.018f);
+                        frill=Join(frill,E(x,y,.5f+side*.153f,.918f,.059f,.045f),.017f);
+                    }
+                    frill=Join(frill,E(x,y,.5f,.946f,.062f,.039f),.016f);
+                    float neck=E(x,y,.5f,.636f,.077f,.086f);
+                    frill=Join(frill,neck,.022f);
+                    if(back){shape=frill;break;}
+                    float faceShape=Join(E(x,y,.5f,.745f,.195f,.131f),E(x,y,.5f,.686f,.145f,.064f),.020f);
+                    shape=Join(frill,faceShape,.019f);
+                    float horns=Horn(x,y,new Vector2(.5f,.723f),new Vector2(.5f,.795f),.034f,.016f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        float brow=Horn(x,y,new Vector2(.5f+side*.100f,.819f),
+                            new Vector2(.5f+side*.151f,.910f),.040f,.014f);
+                        horns=Mathf.Min(horns,brow);
+                    }
+                    shape=Join(shape,horns,.008f);
+                    if(horns>.002f)Ring(ref face,faceShape,.0024f);
+                    Ring(ref face,horns,.0024f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        Eye(ref face,x,y,.5f+side*.092f,.750f,.015f);
+                        Fill(ref face,E(x,y,.5f+side*.052f,.707f,.006f,.007f),ink);
+                        Fill(ref face,E(x,y,.5f+side*.130f,.712f,.015f,.009f),rose);
+                    }
+                    Smile(ref face,x,y,.5f,.689f,.067f);
+                    break;
+                default:
+                    shape=1;
                     break;
             }
         }

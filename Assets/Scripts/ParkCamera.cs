@@ -8,12 +8,15 @@ namespace PeacePark
         public float distance = 30;
         public float yaw = 0;
         public float pitch = 48;
+        public bool InputEnabled=true;
+        public bool ShowControls=true;
         Vector3 previous;
 
         void OnEnable() { Apply(); }
         void Update()
         {
             Vector3 mouse = Input.mousePosition;
+            if(!InputEnabled||GUIUtility.hotControl!=0){previous=mouse;return;}
             Vector3 delta = mouse - previous;
             if (Input.GetMouseButton(0) && !Input.GetMouseButtonDown(0) && mouse.y < Screen.height - 70)
             {
@@ -42,6 +45,7 @@ namespace PeacePark
         void ResetView() { focus = new Vector3(0, 1, 0); distance = 30; yaw = 0; pitch = 48; }
         void OnGUI()
         {
+            if(!ShowControls)return;
             GUI.Box(new Rect(16, 16, 540, 44), "PEACE PARK     Drag: orbit  |  Right drag: pan  |  Wheel: zoom");
             if (GUI.Button(new Rect(Screen.width - 126, 20, 110, 34), "Reset view")) ResetView();
         }

@@ -72,7 +72,7 @@ namespace PeacePark.Editor
         {
             if(!File.Exists(ScenePath)) Create();
             Directory.CreateDirectory("Builds/Windows");
-            var report=BuildPipeline.BuildPlayer(new[]{ScenePath},"Builds/Windows/PeacePark.exe",BuildTarget.StandaloneWindows64,BuildOptions.None);
+            var report=BuildPipeline.BuildPlayer(new[]{ScenePath},ParkPlayerBuild.WindowsExecutable,BuildTarget.StandaloneWindows64,BuildOptions.None);
             if(report.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded) throw new System.Exception("Windows build failed: "+report.summary.result);
         }
     }
