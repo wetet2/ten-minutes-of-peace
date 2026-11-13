@@ -8,6 +8,8 @@ namespace PeacePark
         public DrawingPage Drawing;
         public ParkCamera OrbitCamera;
         public ParkHouse[] Houses;
+        public ParkFountain Fountain;
+        public ParkVenue[] Venues;
         public Shader RabbitPaintShader;
         public Rect WalkArea=new Rect(-9.5f,-7.4f,19f,8.2f);
         public float GroundHeight=.04f;
@@ -23,19 +25,20 @@ namespace PeacePark
         Vector3[] pathPoints;
         int[] pathTriangles;
         float lawnHeight;
+        Vector2 pondCenter,pondRadii;
         Transform animalRoot;
         Camera parkCamera;
         int parkLayers;
         bool parkUsesMsaa;
         string notice;
         float noticeUntil;
-        GUIStyle title,button;
+        GUIStyle title,button,infoSymbol;
         readonly DrawingSkin skin=new DrawingSkin();
         ParkLanPanel lan;
         ParkWelcome welcome;
         ParkDialogs dialogs;
         enum View { ModeSelection, Park, Drawing }
-        enum Dialog { None, Connection, ParkInfo }
+        enum Dialog { None, Connection, ParkInfo, Venues }
         View view;
         Dialog dialog;
         internal ParkLanPanel Lan => lan;
@@ -43,18 +46,21 @@ namespace PeacePark
         internal bool IsSelectingMode=>view==View.ModeSelection;
         internal bool IsConnecting=>dialog==Dialog.Connection;
         internal bool IsParkInfoOpen=>dialog==Dialog.ParkInfo;
+        internal bool IsVenuePickerOpen=>dialog==Dialog.Venues;
+        internal int VenueIndex {get;private set;}
+        internal bool CanChooseVenue=>IsViewingPark&&lan.IsHosting&&Venues!=null&&Venues.Length>1;
         internal bool IsViewingPark=>view==View.Park;
-        sealed class Submission {public int Id;public AnimalKind Kind;public byte[] Front,Back;public bool Raw;}
+        sealed class Submission
+        {
+            public int Id;
+            public AnimalKind Kind;
+            public byte[] Front,Back;
+            public bool Raw;
+            public ParkRabbitAgent WaitingAgent;
+        }
 
         void Start()
         {
-            var lawn=GameObject.Find("Meadow island");lawnHeight=lawn?lawn.GetComponent<Renderer>().bounds.max.y:GroundHeight;
-            var path=GameObject.Find("Winding path");
-            if(path)
-            {
-                var mesh=path.GetComponent<MeshFilter>().sharedMesh;pathPoints=mesh.vertices;pathTriangles=mesh.triangles;
-                for(int i=0;i<pathPoints.Length;i++)pathPoints[i]=path.transform.TransformPoint(pathPoints[i]);
-            }
             if(!Drawing)Drawing=FindAnyObjectByType<DrawingPage>();
             if(!OrbitCamera)OrbitCamera=FindAnyObjectByType<ParkCamera>();
             parkCamera=OrbitCamera?OrbitCamera.GetComponent<Camera>():Camera.main;
@@ -63,8 +69,16 @@ namespace PeacePark
                 parkLayers=parkCamera.cullingMask;
                 parkUsesMsaa=parkCamera.allowMSAA;
             }
-            if(Houses==null||Houses.Length==0)Houses=FindObjectsByType<ParkHouse>(FindObjectsSortMode.None);
-            queues=new Queue<Submission>[Houses.Length];for(int i=0;i<queues.Length;i++)queues[i]=new Queue<Submission>();
+            if(Venues!=null&&Venues.Length>0)ApplyVenue(Venues[0]);
+            else
+            {
+                var lawn=GameObject.Find("Meadow island");
+                lawnHeight=lawn?lawn.GetComponent<Renderer>().bounds.max.y:GroundHeight;
+                var path=GameObject.Find("Winding path");
+                ReadPath(path?path.GetComponent<MeshFilter>():null);
+                if(Houses==null||Houses.Length==0)Houses=FindObjectsByType<ParkHouse>(FindObjectsSortMode.None);
+            }
+            queues=NewQueues(Houses.Length);
             animalRoot=new GameObject("Painted friends").transform;
             Drawing.ShowParkNavigation=true;Drawing.Applied+=OnApplied;Drawing.ParkRequested+=LeaveDrawing;
             if(OrbitCamera)OrbitCamera.ShowControls=false;
@@ -79,6 +93,79 @@ namespace PeacePark
             dialogs.Build(this);
             RabbitCharacter.ConfigurePaintShader(RabbitPaintShader);
             SetView(View.ModeSelection);
+        }
+        void ReadPath(MeshFilter path)
+        {
+            pathPoints=null;pathTriangles=null;
+            if(!path)return;
+            var mesh=path.sharedMesh;
+            pathPoints=mesh.vertices;pathTriangles=mesh.triangles;
+            for(int i=0;i<pathPoints.Length;i++)pathPoints[i]=path.transform.TransformPoint(pathPoints[i]);
+        }
+        void ApplyVenue(ParkVenue venue)
+        {
+            themeName=venue.Name;Houses=venue.Houses;Fountain=venue.Fountain;
+            WalkArea=venue.WalkArea;lawnHeight=venue.LawnHeight;
+            pondCenter=venue.PondCenter;pondRadii=venue.PondRadii;
+            ReadPath(venue.Path);
+            if(OrbitCamera)OrbitCamera.SetVenueView(venue);
+            if(parkCamera)parkCamera.backgroundColor=venue.Sky;
+            RenderSettings.fogColor=venue.Sky;
+        }
+        internal void OpenVenuePicker()
+        {
+            if(CanChooseVenue)SetDialog(Dialog.Venues);
+        }
+        internal bool SelectVenue(int index)
+        {
+            if(!CanChooseVenue||!IsVenuePickerOpen||index<0||index>=Venues.Length)return false;
+            ChangeVenue(index);
+            CloseDialog();
+            return true;
+        }
+        internal void ChangeVenue(int index)
+        {
+            if(index==VenueIndex)return;
+            var previous=Venues[VenueIndex];
+            var next=Venues[index];
+            var entrances=new ParkHouse[next.Houses.Length];
+            var waiting=new List<(int House,Submission Entry)>();
+            for(int i=0;i<queues.Length;i++)
+                foreach(var entry in queues[i])waiting.Add((Mathf.Min(i,entrances.Length-1),entry));
+            var paused=new List<ParkRabbitAgent>();
+            foreach(var animal in animals)
+            {
+                if(!animal.IsEmerging)continue;
+                int slot=Mathf.Min(animal.HouseIndex,entrances.Length-1);
+                if(!entrances[slot])entrances[slot]=Houses[animal.HouseIndex];
+                else
+                {
+                    paused.Add(animal);
+                    waiting.Add((slot,new Submission{Id=animal.Id,WaitingAgent=animal}));
+                    animal.gameObject.SetActive(false);
+                }
+            }
+            foreach(var animal in paused)animals.Remove(animal);
+            for(int i=0;i<entrances.Length;i++)next.Houses[i].ContinueFrom(entrances[i]);
+            queues=NewQueues(entrances.Length);
+            waiting.Sort((a,b)=>a.Entry.Id.CompareTo(b.Entry.Id));
+            foreach(var item in waiting)queues[item.House].Enqueue(item.Entry);
+            previous.Root.SetActive(false);
+            VenueIndex=index;
+            next.Root.SetActive(true);
+            ApplyVenue(next);
+            foreach(var animal in animals)
+            {
+                int slot=Mathf.Min(animal.HouseIndex,Houses.Length-1);
+                animal.ChangeVenue(Houses[slot],slot);
+            }
+            noticeUntil=0;
+        }
+        static Queue<Submission>[] NewQueues(int count)
+        {
+            var result=new Queue<Submission>[count];
+            for(int i=0;i<count;i++)result[i]=new Queue<Submission>();
+            return result;
         }
         public float SurfaceHeight(Vector3 position)
         {
@@ -152,7 +239,7 @@ namespace PeacePark
         {
             dialog=next;
             welcome.SetModalOpen(IsConnecting);
-            dialogs.Show(IsConnecting,IsParkInfoOpen);
+            dialogs.Show(IsConnecting,IsParkInfoOpen,IsVenuePickerOpen);
             if(OrbitCamera)OrbitCamera.InputEnabled=IsViewingPark&&next==Dialog.None;
         }
         internal void ReturnToModeSelection()
@@ -180,6 +267,12 @@ namespace PeacePark
         }
         public bool IsClear(Vector3 position,ParkRabbitAgent self,float radius)
         {
+            if(Fountain&&Fountain.Overlaps(position))return false;
+            if(pondRadii.x>0)
+            {
+                var offset=new Vector2(position.x,position.z)-pondCenter;
+                if(new Vector2(offset.x/pondRadii.x,offset.y/pondRadii.y).sqrMagnitude<1)return false;
+            }
             foreach(var animal in animals)
             {
                 if(animal==self||animal.State==ParkRabbitState.OpeningDoor)continue;
@@ -208,6 +301,12 @@ namespace PeacePark
                     Houses[i].Advance(dt);
                     if(queues[i].Count==0||!Houses[i].TryReserve())continue;
                     var submission=queues[i].Dequeue();
+                    if(submission.WaitingAgent)
+                    {
+                        submission.WaitingAgent.RestartEmergence(Houses[i],i);
+                        animals.Add(submission.WaitingAgent);
+                        continue;
+                    }
                     var go=new GameObject("Painted "+submission.Kind+" "+submission.Id);go.transform.SetParent(animalRoot,false);
                     var agent=go.AddComponent<ParkRabbitAgent>();agent.Initialize(this,Houses[i],i,submission.Id,submission.Front,submission.Back,submission.Raw,submission.Kind);animals.Add(agent);
                 }
@@ -219,28 +318,43 @@ namespace PeacePark
             if(title!=null)return;
             title=new GUIStyle(GUI.skin.label){font=ParkFonts.Bold,fontSize=24,alignment=TextAnchor.MiddleCenter,fontStyle=FontStyle.Normal};title.normal.textColor=new Color32(80,62,47,255);
             button=new GUIStyle(title){fontSize=25};button.normal.textColor=Color.white;
+            infoSymbol=new GUIStyle(title){fontSize=30};
         }
         void OnGUI()
         {
-            if(lan==null||!IsViewingPark||IsParkInfoOpen)return;
+            if(lan==null||!IsViewingPark||dialog!=Dialog.None)return;
             var area=Screen.safeArea;
             if(area.width<=0||area.height<=0)return;
             var old=GUI.matrix;
-            float scale=Mathf.Min(area.height/900f,area.width/575f),width=area.width/scale;
+            float scale=Mathf.Min(area.height/900f,area.width/665f),width=area.width/scale;
             GUI.matrix=old*Matrix4x4.TRS(new Vector3(area.xMin,Screen.height-area.yMax),Quaternion.identity,new Vector3(scale,scale,1));
             Styles();
-            float themeWidth=Mathf.Clamp(title.CalcSize(new GUIContent(ThemeName)).x+44,110,140);
-            if(HudButton(new Rect(20,18,themeWidth,60),ThemeName))OpenParkInfo();
+            const float themeWidth=125;
+            if(CanChooseVenue)
+            {
+                var place=new Rect(20,18,themeWidth,60);
+                if(HudButton(place,ThemeName+"   "))OpenVenuePicker();
+                if(Event.current.type==EventType.Repaint)
+                {
+                    var tint=GUI.color;
+                    GUI.color=title.normal.textColor;
+                    for(int row=0;row<6;row++)
+                        GUI.DrawTexture(new Rect(116+row,46+row,11-2*row,1),Texture2D.whiteTexture);
+                    GUI.color=tint;
+                }
+            }
+            else if(!CanChooseVenue)GUI.Label(new Rect(20,18,themeWidth,60),ThemeName,title);
+            if(dialog==Dialog.None&&HudButton(new Rect(155,18,60,60),"i",symbol:true))OpenParkInfo();
             else if(HudButton(new Rect(width-415,18,158,60),"카메라 초기화")&&OrbitCamera)OrbitCamera.ResetView();
             else if(HudButton(new Rect(width-244,18,224,60),"동물 색칠하기",true))ShowDrawing();
             if(IsViewingPark&&!IsParkInfoOpen&&Time.unscaledTime<noticeUntil&&!string.IsNullOrEmpty(notice))
             {var message=new Rect((width-490)/2,94,490,48);skin.Draw(message,new Color32(255,247,226,255),23);GUI.Label(message,notice,title);}
             GUI.matrix=old;
         }
-        bool HudButton(Rect rect,string text,bool accent=false)
+        bool HudButton(Rect rect,string text,bool accent=false,bool symbol=false)
         {
             skin.Draw(rect,accent?new Color32(104,193,66,255):new Color32(255,247,226,255),27,accent);
-            GUI.Label(rect,text,accent?button:title);
+            GUI.Label(rect,text,symbol?infoSymbol:accent?button:title);
             return GUI.Button(rect,GUIContent.none,GUIStyle.none);
         }
         void OnDestroy()

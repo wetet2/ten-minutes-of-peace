@@ -59,6 +59,11 @@ namespace PeacePark
             pitch = initialPitch;
             Apply();
         }
+        internal void SetVenueView(ParkVenue venue)
+        {
+            initialFocus=venue.Focus;initialDistance=venue.Distance;initialYaw=venue.Yaw;initialPitch=venue.Pitch;
+            ResetView();
+        }
         void OnGUI()
         {
             if(!ShowControls)return;

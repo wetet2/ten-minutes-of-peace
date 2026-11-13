@@ -124,10 +124,11 @@ namespace PeacePark
                 if(colorIndex==i)Circle(new Rect(r.x-4,r.y-4,r.width+8,r.height+8),new Color32(230,241,204,255));
                 Circle(r,colors[i]);if(GUI.Button(r,GUIContent.none,GUIStyle.none))colorIndex=i;
             }
-            Panel(new Rect(width-right+6,182,right-18,592),new Color32(255,246,228,255),34);
+            var brushPanel=new Rect(width-right+6,182,right-18,592);
+            Panel(brushPanel,new Color32(255,246,228,255),34);
             for(int i=0;i<4;i++)
             {
-                var r=new Rect(width-right+22,209+i*141,100,100);
+                var r=new Rect(brushPanel.center.x-50,209+i*141,100,100);
                 if(brushIndex==i)Circle(new Rect(r.x-4,r.y-4,108,108),new Color32(137,227,143,255));
                 Circle(r,brushIndex==i?new Color32(205,250,215,255):new Color32(255,246,228,255));
                 float d=10+i*13;GUI.color=new Color32(30,30,24,255);GUI.DrawTexture(new Rect(r.center.x-d/2,r.center.y-d/2,d,d),round);GUI.color=Color.white;
@@ -138,9 +139,9 @@ namespace PeacePark
             GUI.Label(new Rect(left,195,half,50),"앞모습",title);GUI.Label(new Rect(left+half,195,half,50),"뒷모습",title);
             var frontRect=Fit(new Rect(left+8,245,half-16,580));var backRect=Fit(new Rect(left+half+8,245,half-16,580));
             Canvas(frontRect,Front);Canvas(backRect,Back);
-            var apply=new Rect(width-340,804,326,77);
+            var apply=new Rect(brushPanel.x,brushPanel.yMax+12,brushPanel.width,96);
             skin.Draw(apply,RemainingLock>0||Sending?new Color32(197,211,179,255):new Color32(116,211,33,255),38,true);
-            var old=button.normal.textColor;button.normal.textColor=Color.white;button.fontSize=40;
+            var old=button.normal.textColor;button.normal.textColor=Color.white;button.fontSize=Sending?24:36;
             GUI.Label(apply,Sending?"보내는 중":RemainingLock>0?Mathf.CeilToInt(RemainingLock)+"초":"적용",button);button.normal.textColor=old;
             GUI.enabled=RemainingLock<=0&&!Sending;if(GUI.Button(apply,GUIContent.none,GUIStyle.none))ApplyDrawing();GUI.enabled=true;
             if(ShowParkNavigation)

@@ -12,8 +12,9 @@ namespace PeacePark
         static readonly Color Green = new Color32(187, 227, 140, 255);
         static readonly Color Neutral = new Color32(246, 232, 196, 255);
         ParkPlayground park;
-        RectTransform connection, info;
-        Text status, addressSummary;
+        RectTransform connection, info, venues;
+        Text status, addressSummary, infoTitle;
+        Image[] venueCards;
         InputField address;
         Button connect;
         Sprite rounded;
@@ -37,8 +38,8 @@ namespace PeacePark
             rounded = RoundedSprite();
 
             connection = Card("Connection Popup", root);
-            Caption(connection, "공원에 연결하기", 34, new Rect(28, 17, 464, 53), true);
-            Caption(connection, "같은 Wi-Fi에 연결한 뒤, 공원 화면 상단의\n‘공원’을 눌러 확인한 IP 주소를 입력하세요.",
+            Caption(connection, "놀이 공간에 연결하기", 34, new Rect(28, 17, 464, 53), true);
+            Caption(connection, "같은 Wi-Fi에 연결한 뒤, 호스트 화면 상단의\n‘i’ 버튼을 눌러 확인한 IP 주소를 입력하세요.",
                 20, new Rect(32, 75, 456, 62));
             address = AddressField(connection);
             connect = Action(connection, "연결하고 색칠", new Rect(32, 208, 456, 52), Green);
@@ -47,7 +48,7 @@ namespace PeacePark
             Action(connection, "닫기", new Rect(180, 303, 160, 42), Neutral).onClick.AddListener(park.CloseDialog);
 
             info = Card("Park Information Popup", root);
-            Caption(info, park.ThemeName + " 안내", 34, new Rect(28, 17, 464, 53), true);
+            infoTitle = Caption(info, "", 34, new Rect(28, 17, 464, 53), true);
             Caption(info, "접속 IP 주소", 21, new Rect(36, 77, 448, 30), true, TextAnchor.MiddleLeft);
             Surface("IP Address Panel", info, new Rect(32, 111, 456, 78), new Color32(240, 244, 215, 255));
             addressSummary = Caption(info, "", 20, new Rect(48, 118, 424, 62), false, TextAnchor.MiddleLeft);
@@ -59,19 +60,50 @@ namespace PeacePark
             Caption(info, "왼쪽 드래그  시점 회전   ·   오른쪽 드래그  화면 이동\n마우스 휠  확대·축소\n카메라 초기화 또는 Home  처음 시점",
                 19, new Rect(36, 232, 448, 65), false, TextAnchor.MiddleLeft);
             Action(info, "닫기", new Rect(180, 323, 160, 46), Neutral).onClick.AddListener(park.CloseDialog);
+
+            venues = Card("Venue Picker", root);
+            Caption(venues, "놀이 장소 고르기", 34, new Rect(28, 17, 464, 53), true);
+            var choices = park.Venues;
+            venueCards = new Image[choices?.Length ?? 0];
+            for (int i = 0; i < venueCards.Length; i++)
+            {
+                int index = i;
+                int row = i / 2;
+                var card = Surface(choices[i].Name, venues, new Rect(30 + (i % 2) * 236, 86 + row * 178, 224, 164), Neutral);
+                venueCards[i] = card;
+                var button = card.gameObject.AddComponent<Button>();
+                button.targetGraphic = card;
+                button.onClick.AddListener(() => park.SelectVenue(index));
+                var art = Child("장소 그림", card.rectTransform).gameObject.AddComponent<RawImage>();
+                art.texture = choices[i].Preview;
+                art.enabled = art.texture != null;
+                art.raycastTarget = false;
+                Place(art.rectTransform, new Rect(9, 9, 206, 116));
+                Caption(card.rectTransform, choices[i].Name, 25, new Rect(9, 124, 206, 35), true);
+            }
+            Action(venues, "닫기", new Rect(180, VenueHeight - 61, 160, 46), Neutral).onClick.AddListener(park.CloseDialog);
         }
 
-        internal void Show(bool showConnection, bool showInfo)
+        float VenueHeight => 150 + Mathf.Max(1, (venueCards.Length + 1) / 2) * 178;
+
+        internal void Show(bool showConnection, bool showInfo, bool showVenues)
         {
-            if (EventSystem.current && (gameObject.activeSelf || showConnection || showInfo))
+            if (EventSystem.current && (gameObject.activeSelf || showConnection || showInfo || showVenues))
                 EventSystem.current.SetSelectedGameObject(null);
             connection.gameObject.SetActive(showConnection);
             info.gameObject.SetActive(showInfo);
-            gameObject.SetActive(showConnection || showInfo);
+            venues.gameObject.SetActive(showVenues);
+            gameObject.SetActive(showConnection || showInfo || showVenues);
             if (showConnection) RefreshConnection();
             if (showInfo)
+            {
+                infoTitle.text = park.ThemeName + " 안내";
                 addressSummary.text = park.Lan.HostAddresses ??
                     "다른 기기를 연결하려면 시작 화면에서 놀이 공간을 열어 주세요.";
+            }
+            if (showVenues)
+                for (int i = 0; i < venueCards.Length; i++)
+                    venueCards[i].color = i == park.VenueIndex ? Green : Neutral;
             if (gameObject.activeSelf) RefreshLayout();
         }
 
@@ -93,11 +125,12 @@ namespace PeacePark
             if ((safe == lastArea && Screen.height == lastScreenHeight) || safe.width <= 0 || safe.height <= 0) return;
             lastArea = safe;
             lastScreenHeight = Screen.height;
-            float scale = Mathf.Min(safe.width / (CardWidth + 36), safe.height / (InfoHeight + 36),
+            float scale = Mathf.Min(safe.width / (CardWidth + 36), safe.height / (Mathf.Max(InfoHeight, VenueHeight) + 36),
                 Mathf.Max(.82f, safe.height / 900f));
             Vector2 center = new Vector2(safe.center.x, Screen.height - safe.center.y);
             LayoutCard(connection, center, ConnectionHeight, scale);
             LayoutCard(info, center, InfoHeight, scale);
+            LayoutCard(venues, center, VenueHeight, scale);
         }
 
         static void LayoutCard(RectTransform card, Vector2 center, float height, float scale)

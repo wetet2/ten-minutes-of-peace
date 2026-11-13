@@ -65,7 +65,19 @@ namespace PeacePark
                 !park.OrbitCamera.InputEnabled&&park.Lan.HostAddresses.Contains("127.0.0.1"), "Park information did not open over the live park.");
             park.CloseDialog();
             Require(!park.IsParkInfoOpen&&park.OrbitCamera.InputEnabled, "Closing park information did not restore camera controls.");
+            park.OpenVenuePicker();
+            Require(park.IsVenuePickerOpen&&!park.OrbitCamera.InputEnabled&&park.Venues.Length==2&&
+                park.Venues[0].Preview&&park.Venues[1].Preview,"Venue picture cards are missing.");
             Debug.Log("LAN TEST HOST READY");
+            yield return WaitFor(() => park.SubmissionCount > 0);
+            park.Advance(.2f);
+            Require(park.Animals.Count>0,"Expected a painted animal before changing venue.");
+            var first=park.Animals[0];
+            Require(park.SelectVenue(1)&&park.ThemeName=="숲"&&park.Lan.IsHosting&&
+                park.Venues[1].Root.activeInHierarchy&&!park.Venues[0].Root.activeInHierarchy&&
+                park.Animals[0]==first&&park.OrbitCamera.InputEnabled,"Switching to the forest lost host state.");
+            Require(park.Venues[1].Root.transform.Find("Ultimate Nature Starter scenery").childCount>90,
+                "The forest did not load its Ultimate Nature prefabs.");
             yield return WaitFor(() => park.SubmissionCount >= AnimalKinds.Count);
             yield return new WaitForSecondsRealtime(1);
             Require(park.SubmissionCount == AnimalKinds.Count, "Duplicate submission spawned an extra animal.");
@@ -86,6 +98,10 @@ namespace PeacePark
                 received.Add(rabbit.Character.Kind);
             }
             Require(received.Count == AnimalKinds.Count, "Artwork or species was mixed across submissions.");
+            park.OpenVenuePicker();
+            Require(park.SelectVenue(0)&&park.ThemeName=="공원"&&park.Fountain&&park.Animals[0]==first&&
+                park.Lan.IsHosting,"Returning to the garden lost animals or disconnected the host.");
+            Debug.Log("VENUES PASS: picture picker, imported forest, active door handoff, live LAN submissions and return to the garden.");
             park.ReturnToModeSelection();
             Require(park.IsSelectingMode&&!park.Lan.IsHosting&&camera.cullingMask==0,
                 "Returning to the mode selector did not stop the host and park rendering.");
@@ -96,6 +112,8 @@ namespace PeacePark
         {
             var camera = park.OrbitCamera.GetComponent<Camera>();
             Require(park.IsSelectingMode&&!park.IsDrawing&&camera.cullingMask==0, "The first screen is not the mode selector.");
+            park.OpenVenuePicker();
+            Require(!park.IsVenuePickerOpen,"A non-host was able to open the venue picker.");
             park.ChooseDrawingMode();
             Require(park.IsConnecting&&park.IsSelectingMode&&!park.IsDrawing, "The connection popup replaced the start screen.");
             Require(!park.Lan.BeginJoin("invalid")&&!string.IsNullOrEmpty(park.Lan.Message), "Invalid address was not reported.");

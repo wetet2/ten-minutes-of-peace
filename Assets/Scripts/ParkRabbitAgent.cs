@@ -17,7 +17,7 @@ namespace PeacePark
         ParkPlayground park;
         ParkHouse house;
         System.Random random;
-        float elapsed,phase,pause,blocked;
+        float elapsed,phase,pause,blocked,wanderSpeed;
         Vector3 destination;
         const float ExitDuration=3.75f,WaveDuration=1.65f;
         const float WanderSpeed=.65f;
@@ -52,11 +52,53 @@ namespace PeacePark
             else if(State==ParkRabbitState.Waving)
             {
                 Character.PlayWavePose(elapsed/WaveDuration);
-                if(elapsed>=WaveDuration){State=ParkRabbitState.Wandering;elapsed=0;ChooseDestination();}
+                if(elapsed>=WaveDuration){State=ParkRabbitState.Wandering;elapsed=0;phase=0;ChooseDestination();}
             }
             else if(State==ParkRabbitState.Wandering)Wander(deltaTime);
         }
         float Range(float min,float max)=>Mathf.Lerp(min,max,(float)random.NextDouble());
+        internal bool IsEmerging=>State==ParkRabbitState.OpeningDoor||State==ParkRabbitState.WalkingOut;
+
+        internal void RestartEmergence(ParkHouse entrance,int index)
+        {
+            house=entrance;HouseIndex=index;
+            State=ParkRabbitState.OpeningDoor;
+            elapsed=0;phase=0;
+            transform.SetPositionAndRotation(house.Inside.position,house.Facing);
+            Character.PlayIdlePose();Character.Skin.enabled=false;
+            gameObject.SetActive(true);
+        }
+
+        internal void ChangeVenue(ParkHouse entrance,int index)
+        {
+            house=entrance;HouseIndex=index;
+            switch(State)
+            {
+                case ParkRabbitState.OpeningDoor:
+                    transform.SetPositionAndRotation(house.Inside.position,house.Facing);
+                    break;
+                case ParkRabbitState.WalkingOut:
+                    transform.SetPositionAndRotation(house.ExitPosition(elapsed/ExitDuration),house.Facing);
+                    break;
+                case ParkRabbitState.Waving:
+                    transform.SetPositionAndRotation(house.Welcome.position,house.Facing);
+                    GroundAtCurrentPosition();
+                    break;
+                case ParkRabbitState.Wandering:
+                    var p=transform.position;
+                    p.x=Mathf.Clamp(p.x,park.WalkArea.xMin,park.WalkArea.xMax);
+                    p.z=Mathf.Clamp(p.z,park.WalkArea.yMin,park.WalkArea.yMax);
+                    if(!park.IsClear(p,this,.45f))p=house.Welcome.position;
+                    transform.position=p;
+                    GroundAtCurrentPosition();
+                    ChooseDestination();
+                    break;
+            }
+        }
+        void GroundAtCurrentPosition()
+        {
+            var p=transform.position;p.y=park.SurfaceHeight(p);transform.position=p;
+        }
         void ChooseDestination()
         {
             var area=park.WalkArea;
@@ -69,10 +111,10 @@ namespace PeacePark
         }
         void Wander(float deltaTime)
         {
-            if(pause>0){pause-=deltaTime;Character.PlayIdlePose();return;}
+            if(pause>0){pause-=deltaTime;wanderSpeed=0;Character.PlayIdlePose();return;}
             var offset=destination-transform.position;offset.y=0;
             if(offset.magnitude<.18f)
-            {VisitedTargets++;pause=Range(.6f,1.7f);ChooseDestination();Character.PlayIdlePose();return;}
+            {VisitedTargets++;pause=Range(.6f,1.7f);wanderSpeed=0;ChooseDestination();Character.PlayIdlePose();return;}
             var desired=offset.normalized;
             foreach(var other in park.Animals)
             {
@@ -88,13 +130,14 @@ namespace PeacePark
             if(desired.sqrMagnitude<.001f)desired=offset.normalized;
             desired.Normalize();var targetRotation=Quaternion.LookRotation(-desired,Vector3.up);
             transform.rotation=Quaternion.RotateTowards(transform.rotation,targetRotation,deltaTime*150);
-            if(Quaternion.Angle(transform.rotation,targetRotation)>35){Character.PlayIdlePose();return;}
-            var next=transform.position+desired*(WanderSpeed*deltaTime);
+            if(Quaternion.Angle(transform.rotation,targetRotation)>35){wanderSpeed=0;Character.PlayIdlePose();return;}
+            wanderSpeed=Mathf.MoveTowards(wanderSpeed,WanderSpeed,deltaTime*2.6f);
+            var next=transform.position+desired*(wanderSpeed*deltaTime);
             next.x=Mathf.Clamp(next.x,park.WalkArea.xMin,park.WalkArea.xMax);next.z=Mathf.Clamp(next.z,park.WalkArea.yMin,park.WalkArea.yMax);
             next.y=park.SurfaceHeight(next);
             if(!park.IsClear(next,this,.82f))
             {
-                blocked+=deltaTime;Character.PlayIdlePose();if(blocked>1.2f)ChooseDestination();return;
+                blocked+=deltaTime;wanderSpeed=0;Character.PlayIdlePose();if(blocked>1.2f)ChooseDestination();return;
             }
             float moved=Vector3.Distance(next,transform.position);transform.position=next;WalkedDistance+=moved;phase+=moved*12;
             Character.PlayWalkingPose(phase);blocked=0;

@@ -43,6 +43,48 @@ namespace PeacePark
                 Quaternion.Angle(orbit.transform.rotation,initialRotation)<.01f&&orbit.distance==initialZoom,
                 "Camera reset did not restore the scene's initial position, angle and zoom.");
             Debug.Log("CAMERA RESET PASS: restored the scene's initial position, angle and zoom.");
+            var sunflower=FindAnyObjectByType<RoofSunflowerSpin>();
+            Require(sunflower&&GameObject.Find("Candy roof ornaments"),"Roof ornaments missing from the park.");
+            foreach(var renderer in sunflower.GetComponentsInChildren<MeshRenderer>())
+                Require(!renderer.isPartOfStaticBatch,"The rotating sunflower was statically batched.");
+            var startAngle=sunflower.transform.localRotation;
+            yield return new WaitForSecondsRealtime(.4f);
+            float turn=Quaternion.Angle(startAngle,sunflower.transform.localRotation);
+            Require(turn>2f&&turn<12f,"The roof sunflower is not turning slowly.");
+            Debug.Log($"ROOF ORNAMENTS PASS: sunflower turned {turn:F1} degrees; candy roof ornaments loaded.");
+            var fountain=park.Fountain;
+            var lawn=GameObject.Find("Meadow island").transform;
+            Require(Mathf.Abs(lawn.localScale.x-36)<.01f&&Mathf.Abs(lawn.localScale.z-30)<.01f,
+                "The park did not expand by 20% on both axes.");
+            Require(fountain&&!park.IsClear(fountain.transform.position,null,.82f),
+                "The central fountain is missing or animals can walk through it.");
+            var swimmers=new Transform[3];
+            var before=new Vector3[swimmers.Length];
+            var moving=fountain.transform.Find("Moving water and ducks");
+            for(int i=0;i<swimmers.Length;i++)
+            {
+                swimmers[i]=moving.Find(i==0?"Mother duck path":"Duckling path "+i);
+                Require(swimmers[i],"Expected one mother duck and two ducklings.");
+                before[i]=swimmers[i].localPosition;
+                foreach(var renderer in swimmers[i].GetComponentsInChildren<MeshRenderer>())
+                    Require(!renderer.isPartOfStaticBatch,"A swimming duck was statically batched.");
+            }
+            yield return new WaitForSecondsRealtime(.5f);
+            for(int i=0;i<swimmers.Length;i++)
+            {
+                var position=swimmers[i].localPosition;
+                Require(Vector3.Distance(position,before[i])>.1f&&
+                    Mathf.Abs(position.y-ParkFountain.WaterHeight)<.001f&&new Vector2(position.x,position.z).magnitude<2.1f,
+                    "A duck failed to swim on the water inside the fountain.");
+            }
+            Debug.Log("FOUNTAIN PASS: expanded park, clear walking boundary, and three swimming ducks.");
+            park.ShowPark();
+            yield return Capture("expanded-park.png");
+            orbit.enabled=false;
+            Camera.main.transform.position=new Vector3(-3.8f,6.5f,-7.3f);
+            Camera.main.transform.LookAt(new Vector3(0,.46f,0));
+            yield return Capture("duck-fountain.png");
+            orbit.enabled=true;
             var regular=ParkFonts.Regular;var bold=ParkFonts.Bold;
             Require(regular&&bold&&regular.name=="BaskinRobbins-Regular"&&bold.name=="BaskinRobbins-Bold","Bundled Baskin Robbins fonts missing");
             foreach(char letter in "애들아놀라빠분만쉰다놀이공간열기동물색칠하기연결앞모습뒷적용원트리케라톱스")
@@ -61,6 +103,12 @@ namespace PeacePark
                 }
             }
             Debug.Log("PORCH PASS: both old slabs replaced, 202 emergence samples follow the new landing height.");
+            if(park.Venues?.Length>1)
+            {
+                park.ChangeVenue(1);
+                yield return Capture("forest-lawn.png");
+                park.ChangeVenue(0);
+            }
             park.ShowDrawing();yield return null;
             Paint(park.Drawing.Front,new Color32(245,111,151,255));Paint(park.Drawing.Back,new Color32(245,111,151,255));
             Require(park.Drawing.ApplyDrawing()&&!park.Drawing.ApplyDrawing(),"Player Apply/cooldown failed");
@@ -160,6 +208,60 @@ namespace PeacePark
             finally{benchmarkCamera.targetTexture=previousTarget;benchmarkTarget.Release();Destroy(benchmarkTarget);}
             timings.Sort();float sum=0;foreach(float timing in timings)sum+=timing;
             Debug.Log($"PLAYER FRAME SAMPLE: explicit 2560x1440 offscreen rendering, 5 rabbits, {1000/(sum/timings.Count):F1} average fps, p95 {timings[Mathf.Min(timings.Count-1,Mathf.FloorToInt(timings.Count*.95f))]:F1} ms; excludes visible-window presentation, not a device guarantee.");
+            if(park.Venues?.Length>1)
+            {
+                park.ChangeVenue(1);
+                var front=park.Drawing.Front.Paint.EncodeToPNG();
+                var back=park.Drawing.Back.Paint.EncodeToPNG();
+                int firstArrival=park.Animals.Count;
+                Require(park.Houses.Length==1&&park.Houses[0].name=="Baker's house","Forest must have one bakery entrance.");
+                var bakery=park.Houses[0];
+                var welcome=bakery.ExitPosition(1);
+                Require(park.WalkArea.Contains(new Vector2(welcome.x,welcome.z))&&
+                    Mathf.Abs(welcome.y-park.SurfaceHeight(welcome))<.001f,
+                    "Bakery exit does not end on the walkable lawn.");
+                for(int forward=0;forward<=8;forward++)
+                for(int side=-2;side<=2;side++)
+                {
+                    var point=welcome-bakery.transform.forward*(forward*.5f)+bakery.transform.right*(side*.625f);
+                    Require(park.WalkArea.Contains(new Vector2(point.x,point.z))&&
+                        new Vector2((point.x-park.Venues[1].PondCenter.x)/park.Venues[1].PondRadii.x,
+                            (point.z-park.Venues[1].PondCenter.y)/park.Venues[1].PondRadii.y).sqrMagnitude>=1,
+                        "The pond obstructs the lawn in front of the bakery.");
+                }
+                Debug.Log("BAKERY CLEARANCE PASS: the pond is outside the first four units of walkable lawn in front of the door.");
+                Require(park.TrySubmit((int)AnimalKind.Rabbit,front,back)&&
+                    park.TrySubmit((int)AnimalKind.Bear,front,back),"Forest submission failed.");
+                park.ChangeVenue(0);
+                Require(park.TrySubmit((int)AnimalKind.Frog,front,back,1),"Second park entrance submission failed.");
+                park.Advance(.25f);
+                Require(park.Animals.Count==firstArrival+2&&park.PendingCount==1,"Park entrances did not reserve independently.");
+                park.ChangeVenue(1);
+                Require(park.Animals.Count==firstArrival+1&&park.PendingCount==2,"Two entrance queues did not merge.");
+                var finishedBefore=bakery.CompletedExits;
+                const float step=.025f;
+                var previousPositions=new Vector3[3];
+                for(int frame=0;frame<750;frame++)
+                {
+                    int existing=park.Animals.Count-firstArrival;
+                    for(int i=0;i<existing;i++)previousPositions[i]=park.Animals[firstArrival+i].transform.position;
+                    park.Advance(step);
+                    for(int i=0;i<existing;i++)
+                    {
+                        var agent=park.Animals[firstArrival+i];
+                        if(agent.State!=ParkRabbitState.Wandering)continue;
+                        var delta=agent.transform.position-previousPositions[i];
+                        Require(delta.magnitude<.65f*step+.001f,"Forest animal jumped after waving: "+delta);
+                    }
+                }
+                for(int i=firstArrival;i<park.Animals.Count;i++)
+                    Require(park.Animals[i].State==ParkRabbitState.Wandering&&park.Animals[i].WaveCount==1&&
+                        park.Animals[i].HouseIndex==0&&park.Animals[i].ExitedThroughOpenDoor,
+                        "An animal did not finish emerging from the bakery.");
+                Require(park.Animals.Count==firstArrival+3&&park.PendingCount==0&&bakery.CompletedExits==finishedBefore+3,
+                    "A queued animal was lost when switching to the bakery.");
+                Debug.Log("BAKERY ARRIVALS PASS: merged both park entrances, all three animals exited through one door and walked from lawn level.");
+            }
             if(!failed){Debug.Log("LIVING PARK PLAYER PASS: drawing Apply/cooldown, five independent friends, rendered paint shader, door emergence and bounded wandering.");Application.Quit(0);}
         }
         static void Paint(AnimalCanvas canvas,Color32 color)

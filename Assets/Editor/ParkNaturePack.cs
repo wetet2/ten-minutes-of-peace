@@ -12,6 +12,7 @@ namespace PeacePark.Editor
         const string PrefabFolder = "Assets/Pack_FREE_Trees/Prefabs/";
         const string TreesAndFlowersFolder = "Assets/Trees,Flowers/Prefabs/";
         const string BarkTexture = "Assets/Pack_FREE_Trees/Materials/Textures/treeBody.png";
+        const float TreeScale = 1.5f;
         // Each six placements end with one fruit tree. Continue the sequence across the four groups.
         static readonly int[] GardenTrees = { 3, 5, 3, 5, 3, 4, 5, 3, 5, 3, 5, 2 };
         static readonly int[] MeadowTrees = { 5, 3, 5, 3, 5, 8, 3, 5, 3, 5, 3, 9 };
@@ -88,13 +89,13 @@ namespace PeacePark.Editor
             foreach (int side in new[] { -1, 1 })
             foreach (float z in new[] { -9.7f, -5f, -1f, 3f, 7.7f })
             {
-                Plant(row, trees, planted + count, 3.1f + count % 3 * .18f, new Vector3(side * 13.6f, 0, z),
+                Plant(row, trees, planted + count, 3.1f + count % 3 * .18f, ParkGardenLayout.Expand(new Vector3(side * 13.6f, 0, z)),
                     count * 49, materials);
                 count++;
             }
             for (int x = -10; x <= 10; x += 5)
             {
-                Plant(row, trees, planted + count, 3.5f + count % 3 * .22f, new Vector3(x, 0, 12.3f), count * 49, materials);
+                Plant(row, trees, planted + count, 3.5f + count % 3 * .22f, ParkGardenLayout.Expand(new Vector3(x, 0, 12.3f)), count * 49, materials);
                 count++;
             }
             return count;
@@ -113,7 +114,7 @@ namespace PeacePark.Editor
                 float radius = 19.4f + i % 4 * 1.08f;
                 var position = new Vector3(Mathf.Sin(angle) * radius, 0, Mathf.Cos(angle) * radius);
                 if (position.z < -12 && Mathf.Abs(position.x) < 7) continue;
-                Plant(grove, trees, planted + count, 3.3f + i % 5 * .26f, position, i * 67, materials);
+                Plant(grove, trees, planted + count, 3.3f + i % 5 * .26f, ParkGardenLayout.Expand(position), i * 67, materials);
                 count++;
             }
             // Fill the gap between the fence and the first meadow ring behind both houses.
@@ -121,14 +122,14 @@ namespace PeacePark.Editor
             {
                 float depth = i == 5 ? 14.1f : 15.7f + i % 2 * .8f;
                 var position = new Vector3(-14.5f + i * 5.8f, 0, depth);
-                Plant(grove, trees, planted + count, 3.65f + i % 3 * .23f, position, 26 + i * 41, materials);
+                Plant(grove, trees, planted + count, 3.65f + i % 3 * .23f, ParkGardenLayout.Expand(position), 26 + i * 41, materials);
                 count++;
             }
             foreach (int side in new[] { -1, 1 })
             foreach (float z in new[] { -8f, -.1f, 7.7f })
             {
                 Plant(grove, trees, planted + count, 3.55f + count % 3 * .22f,
-                    new Vector3(side * 16.8f, 0, z), count * 59, materials);
+                    ParkGardenLayout.Expand(new Vector3(side * 16.8f, 0, z)), count * 59, materials);
                 count++;
             }
             return count;
@@ -140,7 +141,7 @@ namespace PeacePark.Editor
             index %= trees.Prefabs.Length;
             var prefab = trees.Prefabs[index];
             var bounds = trees.Bounds[index];
-            float scale = Mathf.Min(height / bounds.size.y, 3.75f / Mathf.Max(bounds.size.x, bounds.size.z));
+            float scale = TreeScale * Mathf.Min(height / bounds.size.y, 3.75f / Mathf.Max(bounds.size.x, bounds.size.z));
             var tree = Object.Instantiate(prefab, parent, false);
             bool olyPoly = prefab.name.EndsWith("_Smooth", StringComparison.Ordinal);
             tree.name = prefab.name + (olyPoly ? " (OlyPoly)" : " (Trees & Flowers)");

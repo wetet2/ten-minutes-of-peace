@@ -42,7 +42,7 @@ namespace PeacePark
             }
             catch (SocketException)
             {
-                message = "공원을 열 수 없어요. 다른 창에서 열려 있는지 확인하세요.";
+                message = "놀이 공간을 열 수 없어요. 다른 창에서 열려 있는지 확인하세요.";
                 return false;
             }
         }
@@ -72,11 +72,11 @@ namespace PeacePark
             if (string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)) value = "127.0.0.1";
             if (!IPAddress.TryParse(value, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork)
             {
-                message = "공원 화면에 표시된 IPv4 주소를 입력하세요.";
+                message = "호스트 화면에 표시된 IPv4 주소를 입력하세요.";
                 return false;
             }
             joining = ip;
-            message = "공원에 연결하는 중…";
+            message = "놀이 공간에 연결하는 중…";
             probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
             probe = ParkLan.Probe(ip, probeCancellation.Token);
             return true;
@@ -96,7 +96,7 @@ namespace PeacePark
             lastBack = back;
             LastSendAccepted = false;
             park.Drawing.Sending = true;
-            park.Drawing.ConnectionStatus = "공원에 그림을 보내는 중…";
+            park.Drawing.ConnectionStatus = "놀이 공간에 그림을 보내는 중…";
             send = ParkLan.Send(remote, draftId, front, back, stop.Token,kind);
             return true;
         }
@@ -122,9 +122,9 @@ namespace PeacePark
                     remote = joining;
                     park.ShowDrawing();
                     park.Drawing.RemoteApply = SendDrawing;
-                    park.Drawing.ConnectionStatus = "공원에 연결됐어요";
+                    park.Drawing.ConnectionStatus = "놀이 공간에 연결됐어요";
                 }
-                else message = "연결할 수 없어요. 주소와 공원 호스트를 확인하세요.";
+                else message = "연결할 수 없어요. 주소와 호스트를 확인하세요.";
             }
             if (send == null || !send.IsCompleted) return;
             byte reply = Result(send);
@@ -135,10 +135,10 @@ namespace PeacePark
             {
                 lastFront = lastBack = null;
                 park.Drawing.SelectAnimal(park.Drawing.SelectedAnimal);
-                park.Drawing.ConnectionStatus = "공원에 보냈어요! 새 동물을 색칠해 보세요";
+                park.Drawing.ConnectionStatus = "놀이 공간에 보냈어요! 새 동물을 색칠해 보세요";
             }
             else if (reply == ParkLan.Full)
-                park.Drawing.ConnectionStatus = "동물이 24마리에 도달했어요. 공원 앱을 다시 열어 주세요";
+                park.Drawing.ConnectionStatus = "동물이 24마리에 도달했어요. 놀이 공간을 다시 열어 주세요";
             else if (reply == ParkLan.Busy)
                 park.Drawing.ConnectionStatus = "기다리는 친구가 많아요. 잠시 후 다시 적용해 주세요";
             else park.Drawing.ConnectionStatus = "전송을 확인하지 못했어요. 다시 적용해 주세요";
