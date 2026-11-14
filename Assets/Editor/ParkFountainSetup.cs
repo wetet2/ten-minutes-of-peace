@@ -62,7 +62,7 @@ namespace PeacePark.Editor
                 bool adult = i == 0;
                 swimmers[i] = Group(adult ? "Mother duck path" : "Duckling path " + i, moving, Vector3.zero);
                 ducks[i] = Group(adult ? "Mother duck" : "Duckling " + i, swimmers[i], Vector3.zero);
-                float scale = adult ? 1 : .61f;
+                float scale = adult ? .5f : .305f;
                 ducks[i].localScale = Vector3.one * scale;
                 Duck(ducks[i], sphere, adult ? duckYellow : ducklingYellow, wing, beak, mouth, eye, ivory, blush);
                 Wake(swimmers[i], shallows, scale);

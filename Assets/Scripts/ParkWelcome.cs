@@ -26,7 +26,7 @@ namespace PeacePark
 
         RectTransform canvasRect, content;
         RawImage meadow, wordmark;
-        Text tagline, status;
+        Text tagline;
         readonly RawImage[] animals = new RawImage[AnimalNames.Length];
         readonly RawImage[] groundShadows = new RawImage[AnimalNames.Length];
         ModeButton host, coloring;
@@ -60,17 +60,8 @@ namespace PeacePark
                 new Color32(188, 239, 129, 255));
             coloring = new ModeButton(this, "동물 색칠하기", "색칠한 친구를 보내요", "Crayons",
                 new Color32(255, 188, 110, 255));
-            host.Button.onClick.AddListener(() =>
-            {
-                if (!park.ChooseHostMode()) status.text = park.Lan.Message;
-            });
+            host.Button.onClick.AddListener(() => park.ChooseHostMode());
             coloring.Button.onClick.AddListener(park.ChooseDrawingMode);
-            status = Label("Connection Status", content, "", ParkFonts.Bold);
-            status.color = new Color32(255, 252, 229, 255);
-            var shadow = status.gameObject.AddComponent<Shadow>();
-            shadow.effectColor = new Color32(30, 61, 23, 230);
-            shadow.effectDistance = new Vector2(1, -2);
-            status.horizontalOverflow = HorizontalWrapMode.Wrap;
             if (!EventSystem.current)
             {
                 var events = new GameObject("Start Screen Input", typeof(EventSystem), typeof(StandaloneInputModule));
@@ -81,7 +72,6 @@ namespace PeacePark
 
         internal void SetVisible(bool visible)
         {
-            if (visible) status.text = "";
             gameObject.SetActive(visible);
             if (visible) RefreshLayout();
         }
@@ -89,7 +79,6 @@ namespace PeacePark
         internal void SetModalOpen(bool open)
         {
             host.Button.interactable = coloring.Button.interactable = !open;
-            if (open) status.text = "";
         }
 
         void Update() => RefreshLayout();
@@ -141,8 +130,6 @@ namespace PeacePark
             host.Layout(new Rect(buttonLeft, buttonTop, buttonWidth, buttonHeight));
             coloring.Layout(new Rect(portrait ? buttonLeft : buttonLeft + buttonWidth + gap,
                 portrait ? buttonTop + buttonHeight + gap : buttonTop, buttonWidth, buttonHeight));
-            Place(status.rectTransform, new Rect(left + width * .04f, height * .945f, width * .92f, height * .053f));
-            status.fontSize = Pixels(Mathf.Min(width * .031f, height * .022f));
         }
 
         sealed class ModeButton

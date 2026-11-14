@@ -32,6 +32,21 @@ namespace PeacePark
         public int SkinVertexCount {get;private set;}
         public int[] SkinTriangles {get;private set;}
         public SkinnedMeshRenderer Skin=>skin;
+        static readonly int AnimalVisibilityId=Shader.PropertyToID("_AnimalVisibility");
+        MaterialPropertyBlock fadeProperties;
+
+        internal void SetVisibility(float visibility)
+        {
+            if(fadeProperties==null)
+            {
+                foreach(var material in materials)material.EnableKeyword("PEACE_PARK_ANIMAL_FADING");
+                skin.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            fadeProperties??=new MaterialPropertyBlock();
+            skin.GetPropertyBlock(fadeProperties);
+            fadeProperties.SetFloat(AnimalVisibilityId,visibility);
+            skin.SetPropertyBlock(fadeProperties);
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetCache()
@@ -146,7 +161,15 @@ namespace PeacePark
         void PlaceFeet(float floor)
         {if(Grounded)model.localPosition-=Vector3.up*floor;}
         public void PlayIdlePose(){IdlePose();PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);}
-        public void PlayWalkingPose(float phase){IdlePose();WalkPose(phase);PlaceFeet(rigAsset?rigAsset.WalkingFloor(phase):mesh.bounds.min.y);}
+        public void PlayWalkingPose(float phase)=>PlayWalkingPose(phase,1);
+        internal void PlayWalkingPose(float phase,float strength)
+        {
+            IdlePose();
+            WalkPose(phase,strength);
+            float idleFloor=rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y;
+            float walkFloor=rigAsset?rigAsset.WalkingFloor(phase):idleFloor;
+            PlaceFeet(Mathf.Lerp(idleFloor,walkFloor,strength));
+        }
         public void PlayWavePose(float progress)
         {
                 IdlePose();float t=Mathf.Clamp01(progress);
@@ -157,20 +180,25 @@ namespace PeacePark
                 float clavicleLift=(20+Mathf.Sin(t*Mathf.PI*4)*1.5f)*shoulderEase;
                 rightShoulder.localRotation=Quaternion.Euler(0,0,clavicleLift);
                 rightShoulder.localPosition+=Vector3.up*(.04f*shoulderEase);
-                rightArm.localRotation=Quaternion.Euler(0,0,lift-clavicleLift);head.localRotation=Quaternion.Euler(0,0,Mathf.Sin(t*Mathf.PI*2)*3);
-                if(correctiveReady){skin.SetBlendShapeWeight(0,0);skin.SetBlendShapeWeight(2,1+t*99);}
+                rightArm.localRotation=Quaternion.Euler(0,0,lift-clavicleLift);
+                head.localRotation=Quaternion.Euler(0,0,Mathf.Sin(t*Mathf.PI*2)*3);
+                if(correctiveReady)
+                {
+                    skin.SetBlendShapeWeight(0,100*(1-release));
+                    skin.SetBlendShapeWeight(2,(1+t*99)*(t<.8f?1:release));
+                }
                 PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
         }
         void Update(){if(running&&!ExternalMotion){sequenceTime+=Time.deltaTime;PreviewPose(sequenceTime);}}
-        void WalkPose(float phase)
+        void WalkPose(float phase,float strength=1)
         {
-            if(correctiveReady){skin.SetBlendShapeWeight(0,0);skin.SetBlendShapeWeight(1,1+Mathf.Repeat(phase,Mathf.PI*2)/(Mathf.PI*2)*99);}
-            float cycle=Mathf.Sin(phase);
+            if(correctiveReady){skin.SetBlendShapeWeight(0,100*(1-strength));skin.SetBlendShapeWeight(1,(1+Mathf.Repeat(phase,Mathf.PI*2)/(Mathf.PI*2)*99)*strength);}
+            float cycle=Mathf.Sin(phase)*strength;
             float armSwing=cycle*15,legSwing=cycle*22;
             leftArm.localRotation=Quaternion.Euler(armSwing,0,40);rightArm.localRotation=Quaternion.Euler(-armSwing,0,-40);
             leftLeg.localRotation=Quaternion.Euler(-legSwing,0,0);rightLeg.localRotation=Quaternion.Euler(legSwing,0,0);
-            model.localPosition=new Vector3(0,Mathf.Abs(Mathf.Sin(phase))*.035f,0);
-            body.localRotation=Quaternion.Euler(0,0,Mathf.Sin(phase)*1.5f);head.localRotation=Quaternion.Euler(0,0,-Mathf.Sin(phase)*1.5f);
+            model.localPosition=new Vector3(0,Mathf.Abs(cycle)*.035f,0);
+            body.localRotation=Quaternion.Euler(0,0,cycle*1.5f);head.localRotation=Quaternion.Euler(0,0,-cycle*1.5f);
         }
         void IdlePose()
         {

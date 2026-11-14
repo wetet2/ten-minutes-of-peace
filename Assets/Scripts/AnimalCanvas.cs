@@ -125,6 +125,13 @@ namespace PeacePark
                     float tailLineWidth=.006f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.56f,.67f,bodyX));
                     detail|=bodyY>TriceratopsTailCenterY(bodyX)&&Mathf.Abs(tail)<tailLineWidth;
                 }
+                else if(back&&animal==(int)AnimalKind.Crocodile)
+                {
+                    float tailLineWidth=.0034f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.55f,.70f,bodyX));
+                    detail|=bodyY>CrocodileTailCenterY(bodyX)&&Mathf.Abs(tail)<tailLineWidth;
+                }
+                else if(back&&animal==(int)AnimalKind.Hippo)
+                    detail|=bodyY<.315f&&Mathf.Abs(tail)<.0029f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.315f,.290f,bodyY));
                 else detail|=back&&Mathf.Abs(tail)<.003f;
                 if(mask[index]!=0)
                 {
@@ -160,6 +167,15 @@ namespace PeacePark
                     float tailT=Mathf.InverseLerp(.50f,.86f,tailX);
                     float tailY=TriceratopsTailCenterY(tailX);
                     return new Vector2(x-tailX,y-tailY).magnitude-Mathf.Lerp(.070f,.009f,tailT);
+                case AnimalKind.Crocodile:
+                    float crocTailX=Mathf.Clamp(x,.50f,.93f);
+                    float crocTailT=Mathf.InverseLerp(.50f,.93f,crocTailX);
+                    return new Vector2(x-crocTailX,y-CrocodileTailCenterY(crocTailX)).magnitude-
+                        Mathf.Lerp(.072f,.010f,crocTailT);
+                case AnimalKind.Hippo:
+                    float hippoTailX=.506f+(.302f-y)*.30f;
+                    return Merge(E(x,y,hippoTailX,.302f,.016f,.041f),
+                        E(x,y,.520f,.265f,.013f,.016f),.009f);
                 case AnimalKind.Giraffe:
                 case AnimalKind.Elephant:
                     float end=kind==AnimalKind.Giraffe?.618f:.414f;
@@ -167,6 +183,11 @@ namespace PeacePark
                         E(x,y,end,.237f,.021f,.026f));
                 default:return 1f;
             }
+        }
+        static float CrocodileTailCenterY(float x)
+        {
+            float t=Mathf.InverseLerp(.50f,.93f,x);
+            return .324f-.135f*Mathf.Sin(t*Mathf.PI*.83f);
         }
         static float TriceratopsTailCenterY(float x)
         {

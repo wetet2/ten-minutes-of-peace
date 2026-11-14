@@ -6,6 +6,7 @@ Shader "PeacePark/Storybook"
         _Shade("Shade tint",Color)=(.62,.76,.69,1)
         _Variation("World variation",Range(0,.1))=0
         _GrassDetail("Grass detail",Range(0,.3))=0
+        [HideInInspector] _AnimalVisibility("Animal visibility",Range(0,1))=1
     }
     SubShader
     {
@@ -18,15 +19,21 @@ Shader "PeacePark/Storybook"
             #pragma fragment frag
             #pragma multi_compile_fwdbase
             #pragma multi_compile_fog
+            #pragma multi_compile_local_fragment _ PEACE_PARK_ANIMAL_FADING
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
+            #include "AnimalFade.cginc"
             fixed4 _Color,_Shade;float _Variation,_GrassDetail;
             struct appdata {float4 vertex:POSITION;float3 normal:NORMAL;};
-            struct v2f {float4 pos:SV_POSITION;float3 normal:TEXCOORD0;float3 world:TEXCOORD1;SHADOW_COORDS(2) UNITY_FOG_COORDS(3)};
+            struct v2f {float4 pos:SV_POSITION;float3 normal:TEXCOORD0;float3 world:TEXCOORD1;SHADOW_COORDS(2) float viewDepth:TEXCOORD3;float4 screen:TEXCOORD4;};
             v2f vert(appdata v)
             {
                 v2f o;o.pos=UnityObjectToClipPos(v.vertex);o.normal=UnityObjectToWorldNormal(v.normal);
-                o.world=mul(unity_ObjectToWorld,v.vertex).xyz;TRANSFER_SHADOW(o);UNITY_TRANSFER_FOG(o,o.pos);return o;
+                o.world=mul(unity_ObjectToWorld,v.vertex).xyz;
+                o.viewDepth=-UnityObjectToViewPos(v.vertex.xyz).z;
+                o.screen=ComputeScreenPos(o.pos);
+                TRANSFER_SHADOW(o);
+                return o;
             }
             float grassHash(float2 p)
             {
@@ -43,6 +50,9 @@ Shader "PeacePark/Storybook"
             }
             fixed4 frag(v2f i):SV_Target
             {
+                #if defined(PEACE_PARK_ANIMAL_FADING)
+                    ApplyAnimalFade(i.screen);
+                #endif
                 float diffuse=dot(normalize(i.normal),normalize(_WorldSpaceLightPos0.xyz));
                 float wrap=smoothstep(-.15,.95,diffuse);
                 fixed3 lighting=lerp(_Shade.rgb,fixed3(1.05,1.035,1),wrap);
@@ -57,7 +67,13 @@ Shader "PeacePark/Storybook"
                     float flecks=grassNoise(p*float2(16,22))*(1-smoothstep(.02,.07,footprint));
                     variation+=_GrassDetail*(broad+clumps*.75+flecks*.65);
                 }
-                fixed4 color=fixed4(_Color.rgb*lighting*(1+variation),1);UNITY_APPLY_FOG(i.fogCoord,color);return color;
+                fixed4 color=fixed4(_Color.rgb*lighting*(1+variation),1);
+                // Interpolate distance, not the clamped vertex fog factor, on large ground triangles.
+                #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+                    UNITY_CALC_FOG_FACTOR_RAW(i.viewDepth);
+                    UNITY_FOG_LERP_COLOR(color,unity_FogColor,unityFogFactor);
+                #endif
+                return color;
             }
             ENDCG
         }

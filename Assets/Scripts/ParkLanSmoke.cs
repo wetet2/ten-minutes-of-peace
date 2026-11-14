@@ -60,14 +60,14 @@ namespace PeacePark
             Require(park.ChooseHostMode()&&park.IsViewingPark&&park.Lan.IsHosting, "Host choice did not open the park.");
             var camera=park.OrbitCamera.GetComponent<Camera>();
             Require(camera.cullingMask!=0&&park.OrbitCamera.InputEnabled, "The host park is not rendered or controllable.");
-            park.OpenParkInfo();
-            Require(park.IsParkInfoOpen&&park.IsViewingPark&&park.Lan.IsHosting&&camera.cullingMask!=0&&
+            park.OpenSettings();
+            Require(park.IsSettingsOpen&&park.IsViewingPark&&park.Lan.IsHosting&&camera.cullingMask!=0&&
                 !park.OrbitCamera.InputEnabled&&park.Lan.HostAddresses.Contains("127.0.0.1"), "Park information did not open over the live park.");
             park.CloseDialog();
-            Require(!park.IsParkInfoOpen&&park.OrbitCamera.InputEnabled, "Closing park information did not restore camera controls.");
+            Require(!park.IsSettingsOpen&&park.OrbitCamera.InputEnabled, "Closing settings did not restore camera controls.");
             park.OpenVenuePicker();
-            Require(park.IsVenuePickerOpen&&!park.OrbitCamera.InputEnabled&&park.Venues.Length==2&&
-                park.Venues[0].Preview&&park.Venues[1].Preview,"Venue picture cards are missing.");
+            Require(park.IsVenuePickerOpen&&!park.OrbitCamera.InputEnabled&&park.Venues.Length==3&&
+                park.Venues.All(venue=>venue.Preview),"Venue picture cards are missing.");
             Debug.Log("LAN TEST HOST READY");
             yield return WaitFor(() => park.SubmissionCount > 0);
             park.Advance(.2f);
@@ -81,7 +81,7 @@ namespace PeacePark
             yield return WaitFor(() => park.SubmissionCount >= AnimalKinds.Count);
             yield return new WaitForSecondsRealtime(1);
             Require(park.SubmissionCount == AnimalKinds.Count, "Duplicate submission spawned an extra animal.");
-            park.Advance(45);
+            park.Advance(AnimalKinds.Count*7f);
             Require(park.Animals.Count == AnimalKinds.Count && park.PendingCount == 0, "Remote submissions did not spawn.");
             var received = new System.Collections.Generic.HashSet<AnimalKind>();
             foreach (var rabbit in park.Animals)
@@ -116,19 +116,29 @@ namespace PeacePark
             Require(!park.IsVenuePickerOpen,"A non-host was able to open the venue picker.");
             park.ChooseDrawingMode();
             Require(park.IsConnecting&&park.IsSelectingMode&&!park.IsDrawing, "The connection popup replaced the start screen.");
-            Require(!park.Lan.BeginJoin("invalid")&&!string.IsNullOrEmpty(park.Lan.Message), "Invalid address was not reported.");
+            Require(!park.Lan.BeginJoin("invalid")&&!string.IsNullOrEmpty(park.Toast.Message), "Invalid address did not show a toast.");
             park.CloseDialog();
-            Require(park.IsSelectingMode&&!park.IsConnecting&&string.IsNullOrEmpty(park.Lan.Message), "Closing the popup did not restore mode selection.");
+            Require(park.IsSelectingMode&&!park.IsConnecting&&park.Toast.Message==null, "Closing the popup did not clear its toast.");
             park.ChooseDrawingMode();
-            Require(park.Lan.BeginJoin("localhost"), "Client failed to start joining.");
+            Require(park.Lan.BeginDiscovery(),"Client failed to start automatic discovery.");
             yield return WaitFor(() => park.Lan.IsJoined);
             Require(park.IsDrawing&&!park.IsConnecting&&!park.IsSelectingMode, "Join did not open the drawing page and dismiss the popup.");
+            Debug.Log("DISCOVERY PASS: a UDP reply located the host and the existing TCP connection opened drawing.");
             Require(camera.cullingMask == 0 && !camera.allowMSAA,
                 "The coloring client is still rendering the park.");
+            Require(!park.Drawing.ShowsParkNavigation&&park.Toast.Message=="놀이 공간에 연결됐어요","Remote drawing did not show its connection toast.");
             Paint(park.Drawing, RedFor(AnimalKind.Rabbit));
             Require(park.Drawing.ApplyDrawing() && !park.Drawing.ApplyDrawing(), "Apply or cooldown failed.");
             yield return WaitFor(() => park.Lan.LastSendAccepted);
             Require(park.SubmissionCount == 0 && park.IsDrawing, "Client created an animal locally.");
+            Require(park.Toast.Message?.StartsWith("놀이 공간에 보냈어요!")==true,
+                "An acknowledged drawing did not show a toast.");
+            float toastStart=Time.unscaledTime;
+            yield return new WaitForSecondsRealtime(2.5f);
+            Require(park.Toast.Message!=null,"The send toast expired early.");
+            yield return WaitFor(() => park.Toast.Message==null);
+            Require(Time.unscaledTime-toastStart<3.3f,"The send toast did not clear in three seconds.");
+            Debug.Log("DRAWING TOAST PASS: remote navigation hidden, send acknowledgement displayed for three seconds.");
 
             var others=Enumerable.Range(0,AnimalKinds.Count).Select(value=>(AnimalKind)value)
                 .Where(kind=>kind!=AnimalKind.Rabbit).ToArray();
@@ -157,7 +167,7 @@ namespace PeacePark
             Debug.Log($"LAN CLIENT PASS: joined localhost, sent all {AnimalKinds.Count} species and received acknowledgements, including repeated request IDs.");
         }
 
-        static byte RedFor(AnimalKind kind)=>(byte)(((int)kind+1)*30);
+        static byte RedFor(AnimalKind kind)=>(byte)(((int)kind+1)*21);
 
         static void Paint(DrawingPage drawing, byte red)
         {

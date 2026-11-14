@@ -19,7 +19,11 @@ namespace PeacePark.Editor
             int importedTrees=ParkNaturePack.Apply(scene);
             if(importedTrees>0)Debug.Log($"NATURE PACK: applied {importedTrees} tree prefabs.");
             ParkRoofDecor.Apply(scene);
+            ParkButterflySetup.Apply(scene);
             ParkVenuesSetup.Apply(scene);
+            foreach(var root in scene.GetRootGameObjects())
+            foreach(var house in root.GetComponentsInChildren<ParkHouse>(true))
+                house.transform.localScale*=1.1f;
             if(report==null)return;
             foreach(var root in scene.GetRootGameObjects())foreach(var renderer in root.GetComponentsInChildren<MeshRenderer>(true))
             {
@@ -30,7 +34,8 @@ namespace PeacePark.Editor
                 if(house&&renderer.transform.IsChildOf(house.DoorHinge))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var fountain=renderer.GetComponentInParent<ParkFountain>();
-                if(renderer.GetComponentInParent<RoofSunflowerSpin>()||(fountain&&fountain.IsMovingPart(renderer.transform)))
+                if(renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
+                    (fountain&&fountain.IsMovingPart(renderer.transform)))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,StaticEditorFlags.BatchingStatic);
             }

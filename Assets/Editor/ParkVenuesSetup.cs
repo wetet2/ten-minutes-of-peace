@@ -15,7 +15,7 @@ namespace PeacePark.Editor
             var source=Array.Find(roots, root=>root.name=="Peace Park");
             var countryside=Array.Find(roots, root=>root.name=="Storybook countryside");
             var controller=Array.Find(roots, root=>root.GetComponent<ParkPlayground>())?.GetComponent<ParkPlayground>();
-            if(!source||!controller||!controller.OrbitCamera||controller.Venues?.Length>0||!ParkForestSetup.IsInstalled)return;
+            if(!source||!controller||!controller.OrbitCamera||controller.Venues?.Length>0)return;
 
             var garden=Group("Garden venue",null,Vector3.zero);
             SceneManager.MoveGameObjectToScene(garden.gameObject,scene);
@@ -31,12 +31,23 @@ namespace PeacePark.Editor
                 WalkArea=controller.WalkArea, Focus=orbit.focus, Distance=orbit.distance, Yaw=orbit.yaw,
                 Pitch=orbit.pitch, Sky=orbit.GetComponent<Camera>().backgroundColor, Preview=Preview("Garden")
             };
-            var forest=Group("Forest venue",null,Vector3.zero);
-            SceneManager.MoveGameObjectToScene(forest.gameObject,scene);
-            var forestVenue=ParkForestSetup.Create(forest,gardenVenue);
-            forestVenue.Preview=Preview("Forest");
-            forest.gameObject.SetActive(false);
-            controller.Venues=new[]{gardenVenue,forestVenue};
+            var venues=new System.Collections.Generic.List<ParkVenue>{gardenVenue};
+            if(ParkForestSetup.IsInstalled)
+            {
+                var forest=Group("Forest venue",null,Vector3.zero);
+                SceneManager.MoveGameObjectToScene(forest.gameObject,scene);
+                var forestVenue=ParkForestSetup.Create(forest,gardenVenue);
+                forestVenue.Preview=Preview("Forest");
+                forest.gameObject.SetActive(false);
+                venues.Add(forestVenue);
+            }
+            var cafe=Group("Kids cafe venue",null,Vector3.zero);
+            SceneManager.MoveGameObjectToScene(cafe.gameObject,scene);
+            var cafeVenue=ParkKidsCafeSetup.Create(cafe);
+            cafeVenue.Preview=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/Venues/KidsCafe.png");
+            cafe.gameObject.SetActive(false);
+            venues.Add(cafeVenue);
+            controller.Venues=venues.ToArray();
         }
 
         static Texture2D Preview(string venue) =>

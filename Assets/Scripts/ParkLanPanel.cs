@@ -15,14 +15,13 @@ namespace PeacePark
         ParkLan.Host host;
         IPAddress remote;
         IPAddress joining;
-        Task<byte> probe, send;
+        Task<byte> send;
+        Task<IPAddress> probe;
         CancellationTokenSource probeCancellation;
         byte[] lastFront, lastBack;
         AnimalKind lastKind;
         Guid draftId;
         string hostAddresses;
-        string message = "";
-        internal string Message => message;
         internal string HostAddresses => hostAddresses;
         internal bool IsJoining => probe != null;
         public bool IsHosting => host != null;
@@ -42,7 +41,7 @@ namespace PeacePark
             }
             catch (SocketException)
             {
-                message = "놀이 공간을 열 수 없어요. 다른 창에서 열려 있는지 확인하세요.";
+                park.Toast.Show("놀이 공간을 열 수 없어요. 다른 창을 확인해 주세요.");
                 return false;
             }
         }
@@ -72,14 +71,34 @@ namespace PeacePark
             if (string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)) value = "127.0.0.1";
             if (!IPAddress.TryParse(value, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork)
             {
-                message = "호스트 화면에 표시된 IPv4 주소를 입력하세요.";
+                park.Toast.Show("호스트 화면에 표시된 IPv4 주소를 입력하세요.");
                 return false;
             }
             joining = ip;
-            message = "놀이 공간에 연결하는 중…";
-            probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
-            probe = ParkLan.Probe(ip, probeCancellation.Token);
+            StartProbe(ip);
             return true;
+        }
+
+        internal bool BeginDiscovery()
+        {
+            if(!park.IsConnecting||IsJoining||host!=null||remote!=null)return false;
+            StartProbe(null);
+            return true;
+        }
+
+        void StartProbe(IPAddress address)
+        {
+            joining=address;
+            park.Toast.Show(address==null?"같은 Wi-Fi에서 놀이 공간을 찾는 중…":"놀이 공간에 연결하는 중…");
+            probeCancellation=CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+            probe=FindAndConnect(address,probeCancellation.Token);
+        }
+
+        static async Task<IPAddress> FindAndConnect(IPAddress address,CancellationToken token)
+        {
+            address??=await ParkLanDiscovery.Find(token).ConfigureAwait(false);
+            if(address==null)return null;
+            return await ParkLan.Probe(address,token).ConfigureAwait(false)==ParkLan.Accepted?address:null;
         }
 
         bool SendDrawing()
@@ -96,16 +115,16 @@ namespace PeacePark
             lastBack = back;
             LastSendAccepted = false;
             park.Drawing.Sending = true;
-            park.Drawing.ConnectionStatus = "놀이 공간에 그림을 보내는 중…";
+            park.Toast.Show("놀이 공간에 그림을 보내는 중…");
             send = ParkLan.Send(remote, draftId, front, back, stop.Token,kind);
             return true;
         }
 
-        static byte Result(Task<byte> task)
+        static T Result<T>(Task<T> task)
         {
             if (task.Status == TaskStatus.RanToCompletion) return task.Result;
             _ = task.Exception; // A closed connection is displayed as a retryable failure.
-            return 0;
+            return default;
         }
 
         public void Update()
@@ -113,18 +132,19 @@ namespace PeacePark
             host?.Pump(park);
             if (probe != null && probe.IsCompleted)
             {
-                byte result = Result(probe);
+                var found=Result(probe);
                 probe = null;
                 probeCancellation.Dispose();
                 probeCancellation = null;
-                if (result == ParkLan.Accepted)
+                if (found!=null)
                 {
-                    remote = joining;
+                    remote = found;
                     park.ShowDrawing();
                     park.Drawing.RemoteApply = SendDrawing;
-                    park.Drawing.ConnectionStatus = "놀이 공간에 연결됐어요";
+                    park.Toast.Show("놀이 공간에 연결됐어요");
                 }
-                else message = "연결할 수 없어요. 주소와 호스트를 확인하세요.";
+                else park.Toast.Show(joining==null?"놀이 공간을 찾지 못했어요. IP로도 연결할 수 있어요."
+                    :"연결할 수 없어요. 주소와 호스트를 확인하세요.");
             }
             if (send == null || !send.IsCompleted) return;
             byte reply = Result(send);
@@ -135,22 +155,20 @@ namespace PeacePark
             {
                 lastFront = lastBack = null;
                 park.Drawing.SelectAnimal(park.Drawing.SelectedAnimal);
-                park.Drawing.ConnectionStatus = "놀이 공간에 보냈어요! 새 동물을 색칠해 보세요";
+                park.Toast.Show("놀이 공간에 보냈어요! 새 동물을 색칠해 보세요");
             }
             else if (reply == ParkLan.Full)
-                park.Drawing.ConnectionStatus = "동물이 24마리에 도달했어요. 놀이 공간을 다시 열어 주세요";
+                park.Toast.Show("이 호스트의 놀이 공간이 가득 찼어요");
             else if (reply == ParkLan.Busy)
-                park.Drawing.ConnectionStatus = "기다리는 친구가 많아요. 잠시 후 다시 적용해 주세요";
-            else park.Drawing.ConnectionStatus = "전송을 확인하지 못했어요. 다시 적용해 주세요";
+                park.Toast.Show("기다리는 친구가 많아요. 잠시 후 다시 적용해 주세요");
+            else park.Toast.Show("전송을 확인하지 못했어요. 다시 적용해 주세요");
         }
-
-        public void ClearMessage() => message = "";
 
         internal void CancelJoin()
         {
             CancelProbe();
             joining = null;
-            ClearMessage();
+            park.Toast.Clear();
         }
 
         public void ResetSession()
@@ -163,7 +181,6 @@ namespace PeacePark
             lastFront = lastBack = null;
             LastSendAccepted = false;
             park.Drawing.RemoteApply = null;
-            park.Drawing.ConnectionStatus = null;
         }
 
         void CancelProbe()

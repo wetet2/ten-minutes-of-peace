@@ -129,5 +129,75 @@ namespace PeacePark.Editor
             if(report.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded)throw new System.Exception("Living park build failed: "+report.summary.result);
             File.Copy("Assets/Resources/Fonts/BaskinRobbins-NOTICE.txt","Builds/Windows/BaskinRobbins-NOTICE.txt",true);
         }
+
+        [MenuItem("Peace Park/Build Living Park Android APK")]
+        public static void BuildAndroid()
+        {
+            if(!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android,BuildTarget.Android))
+                throw new System.InvalidOperationException("Install Android Build Support, SDK & NDK Tools, and OpenJDK in Unity Hub.");
+            DrawingTemplateBaker.Bake();
+            ParkPlayerBuild.BakeRigs();
+            if(!File.Exists(ScenePath))Create();
+            const string folder="Builds/Android";
+            Directory.CreateDirectory(folder);
+            string published=Path.Combine(folder,"TenMinutesOfPeace.apk");
+            var nextVersion=AndroidApkVersion.Next(published);
+            string staging=Path.Combine(folder,".staging");
+            Directory.CreateDirectory(staging);
+            string staged=Path.Combine(staging,Path.GetFileName(published));
+            string previousVersion=PlayerSettings.bundleVersion;
+            int previousCode=PlayerSettings.Android.bundleVersionCode;
+
+            var deformation=PlayerSettings.meshDeformation;
+            bool autoGraphics=PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.Android);
+            var graphics=PlayerSettings.GetGraphicsAPIs(BuildTarget.Android);
+            bool appBundle=EditorUserBuildSettings.buildAppBundle;
+            bool exportProject=EditorUserBuildSettings.exportAsGoogleAndroidProject;
+            bool internetPermission=PlayerSettings.Android.forceInternetPermission;
+            bool portrait=PlayerSettings.allowedAutorotateToPortrait;
+            bool upsideDown=PlayerSettings.allowedAutorotateToPortraitUpsideDown;
+            bool landscapeLeft=PlayerSettings.allowedAutorotateToLandscapeLeft;
+            bool landscapeRight=PlayerSettings.allowedAutorotateToLandscapeRight;
+            var orientation=PlayerSettings.defaultInterfaceOrientation;
+            try
+            {
+                // Keep the multi-frame corrective blend shapes on the more portable CPU path.
+                PlayerSettings.meshDeformation=MeshDeformation.CPU;
+                PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android,false);
+                PlayerSettings.SetGraphicsAPIs(BuildTarget.Android,new[]{UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3});
+                PlayerSettings.Android.forceInternetPermission=true;
+                PlayerSettings.defaultInterfaceOrientation=UIOrientation.AutoRotation;
+                PlayerSettings.allowedAutorotateToPortrait=PlayerSettings.allowedAutorotateToPortraitUpsideDown=false;
+                PlayerSettings.allowedAutorotateToLandscapeLeft=PlayerSettings.allowedAutorotateToLandscapeRight=true;
+                EditorUserBuildSettings.buildAppBundle=false;
+                EditorUserBuildSettings.exportAsGoogleAndroidProject=false;
+                PlayerSettings.bundleVersion=nextVersion.Name;
+                PlayerSettings.Android.bundleVersionCode=nextVersion.Code;
+                var report=BuildPipeline.BuildPlayer(new[]{ScenePath},staged,BuildTarget.Android,BuildOptions.None);
+                if(report.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded)
+                    throw new System.InvalidOperationException("Android APK build failed: "+report.summary.result);
+                if(AndroidApkVersion.Read(staged)!=nextVersion)
+                    throw new System.InvalidOperationException("The generated APK has an unexpected version.");
+                if(File.Exists(published))File.Replace(staged,published,null);
+                else File.Move(staged,published);
+                Debug.Log($"Android APK {nextVersion.Name} (build {nextVersion.Code}): {published}");
+            }
+            finally
+            {
+                PlayerSettings.bundleVersion=previousVersion;
+                PlayerSettings.Android.bundleVersionCode=previousCode;
+                PlayerSettings.meshDeformation=deformation;
+                PlayerSettings.SetGraphicsAPIs(BuildTarget.Android,graphics);
+                PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android,autoGraphics);
+                PlayerSettings.Android.forceInternetPermission=internetPermission;
+                PlayerSettings.defaultInterfaceOrientation=orientation;
+                PlayerSettings.allowedAutorotateToPortrait=portrait;
+                PlayerSettings.allowedAutorotateToPortraitUpsideDown=upsideDown;
+                PlayerSettings.allowedAutorotateToLandscapeLeft=landscapeLeft;
+                PlayerSettings.allowedAutorotateToLandscapeRight=landscapeRight;
+                EditorUserBuildSettings.buildAppBundle=appBundle;
+                EditorUserBuildSettings.exportAsGoogleAndroidProject=exportProject;
+            }
+        }
     }
 }

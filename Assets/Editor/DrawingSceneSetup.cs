@@ -93,7 +93,31 @@ namespace PeacePark.Editor
         public static void ValidateAndBuild()
         {
             Validate();
+            CaptureRevisedTemplates();
             ParkPlaygroundSetup.BuildWindows();
+        }
+
+        static void CaptureRevisedTemplates()
+        {
+            const int width=320,height=400;
+            var sheet=new Texture2D(width*3,height*2,TextureFormat.RGB24,false);
+            for(int column=0;column<3;column++)for(int side=0;side<2;side++)
+            {
+                var canvas=new AnimalCanvas((int)AnimalKind.Crocodile+column,side==1);
+                try
+                {
+                    var outline=canvas.Outline.GetPixels32();
+                    for(int y=0;y<height;y++)for(int x=0;x<width;x++)
+                    {
+                        var pixel=outline[y*3*AnimalCanvas.Width+x*3];
+                        sheet.SetPixel(column*width+x,(1-side)*height+y,Color.Lerp(Color.white,pixel,pixel.a/255f));
+                    }
+                }
+                finally {canvas.Dispose();}
+            }
+            sheet.Apply();
+            File.WriteAllBytes("Previews/revised-animal-templates.png",sheet.EncodeToPNG());
+            Object.DestroyImmediate(sheet);
         }
     }
 }

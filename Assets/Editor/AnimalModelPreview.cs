@@ -11,11 +11,13 @@ namespace PeacePark.Editor
     public static class AnimalModelPreview
     {
         static readonly AnimalKind[] order={
-            AnimalKind.Giraffe,AnimalKind.Bear,AnimalKind.Tiger,AnimalKind.Frog,AnimalKind.Elephant,AnimalKind.Triceratops
+            AnimalKind.Giraffe,AnimalKind.Bear,AnimalKind.Tiger,AnimalKind.Frog,AnimalKind.Elephant,AnimalKind.Triceratops,
+            AnimalKind.Crocodile,AnimalKind.Hippo,AnimalKind.Gorilla
         };
         static readonly Color32[] palette={
             new Color32(247,194,100,255),new Color32(177,119,81,255),new Color32(255,165,73,255),
-            new Color32(121,195,97,255),new Color32(155,174,219,255),new Color32(92,191,170,255)
+            new Color32(121,195,97,255),new Color32(155,174,219,255),new Color32(92,191,170,255),
+            new Color32(124,190,100,255),new Color32(183,156,203,255),new Color32(147,141,152,255)
         };
 
         public static void CaptureAndBuild()
@@ -46,6 +48,7 @@ namespace PeacePark.Editor
             Directory.CreateDirectory("Previews");
             const int width=490,height=570;
             var sheet=new Texture2D(width*order.Length,height*2,TextureFormat.RGB24,false);
+            var newSpecies=new Texture2D(width*3,height*2,TextureFormat.RGB24,false);
             for(int i=0;i<order.Length;i++)
             {
                 var kind=order[i];
@@ -73,6 +76,13 @@ namespace PeacePark.Editor
                 Look(camera,center,90);
                 var side=Render(camera,width,height);
                 sheet.SetPixels32(i*width,0,width,height,side);
+                if(kind>=AnimalKind.Crocodile)
+                {
+                    int column=(int)kind-(int)AnimalKind.Crocodile;
+                    newSpecies.SetPixels32(column*width,height,width,height,front);
+                    Look(camera,center,58);
+                    newSpecies.SetPixels32(column*width,0,width,height,Render(camera,width,height));
+                }
                 if(kind==AnimalKind.Triceratops)
                 {
                     Look(camera,center,34);
@@ -94,6 +104,9 @@ namespace PeacePark.Editor
             sheet.Apply();
             File.WriteAllBytes("Previews/animals-front-and-side.png",sheet.EncodeToPNG());
             Object.DestroyImmediate(sheet);
+            newSpecies.Apply();
+            File.WriteAllBytes("Previews/new-animals-models.png",newSpecies.EncodeToPNG());
+            Object.DestroyImmediate(newSpecies);
             CaptureEditedContours();
             AssetDatabase.Refresh();
             Debug.Log($"ANIMAL MODEL REVIEW PASS: {order.Length} connected species, door fit and painted front/side previews.");

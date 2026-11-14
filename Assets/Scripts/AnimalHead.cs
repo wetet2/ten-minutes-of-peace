@@ -32,6 +32,22 @@ namespace PeacePark
         {Fill(ref c,E(x,y,cx,cy,size,size*1.15f),ink);Fill(ref c,E(x,y,cx-.003f,cy+.005f,.0036f,.0036f),Color.white);}
         static void Smile(ref Color c,float x,float y,float cx,float cy,float width)
         {if(y<cy)Ring(ref c,E(x,y,cx,cy,width,.022f),.0023f);}
+        static float SmileHeight(float x,float halfWidth,float center,float lift)
+        {
+            float t=(x-.5f)/halfWidth;
+            return center+lift*t*t;
+        }
+
+        static void Tooth(ref Color face,float x,float y,float toothX,float rootY,float width,float length,bool rounded)
+        {
+            if(y>rootY)return;
+            float depth=Mathf.Clamp01((rootY-y)/length);
+            float edge=Mathf.Lerp(width,width*(rounded?.78f:.36f),depth);
+            float tip=rootY-length;
+            float distance=Mathf.Max(Mathf.Abs(x-toothX)-edge,tip-y);
+            // The mouth line is the top edge of the tooth.
+            Ring(ref face,distance,.0019f);
+        }
         public static void Sample(int kind,float x,float y,bool back,out float shape,out Color face)
         {
             face=Color.clear;
@@ -160,6 +176,66 @@ namespace PeacePark
                         Fill(ref face,E(x,y,.5f+side*.130f,.712f,.015f,.009f),rose);
                     }
                     Smile(ref face,x,y,.5f,.689f,.067f);
+                    break;
+                case (int)AnimalKind.Crocodile:
+                    float snout=E(x,y,.5f,.677f,.220f,.080f);
+                    shape=Join(E(x,y,.5f,.752f,.230f,.139f),snout,.021f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        float cx=.5f+side*.137f;
+                        shape=Join(shape,E(x,y,cx,.845f,.069f,.066f));
+                        if(back)continue;
+                        Eye(ref face,x,y,cx,.834f,.017f);
+                        Fill(ref face,E(x,y,.5f+side*.108f,.716f,.012f,.007f,side*.22f),ink);
+                        float toothX=.5f+side*.129f;
+                        Tooth(ref face,x,y,toothX,SmileHeight(x,.183f,.654f,.023f),.0115f,.024f,false);
+                    }
+                    if(!back)
+                    {
+                        float mouthX=Mathf.Clamp(x,.317f,.683f);
+                        float mouthY=SmileHeight(mouthX,.183f,.654f,.023f);
+                        Fill(ref face,new Vector2(x-mouthX,y-mouthY).magnitude-.0027f,ink);
+                    }
+                    break;
+                case (int)AnimalKind.Hippo:
+                    float hippoMuzzle=E(x,y,.5f,.695f,.228f,.080f);
+                    shape=Join(E(x,y,.5f,.768f,.215f,.143f),hippoMuzzle,.023f);
+                    shape=Join(shape,E(x,y,.5f,.643f,.144f,.062f),.019f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        float cx=.5f+side*.172f;
+                        shape=Join(shape,E(x,y,cx,.877f,.047f,.044f));
+                        if(back)continue;
+                        Ring(ref face,E(x,y,cx,.880f,.024f,.021f));
+                        Eye(ref face,x,y,.5f+side*.112f,.796f,.014f);
+                        Fill(ref face,E(x,y,.5f+side*.121f,.714f,.019f,.010f,side*.25f),ink);
+                        Tooth(ref face,x,y,.5f+side*.043f,SmileHeight(x,.151f,.655f,.024f),.016f,.026f,true);
+                    }
+                    if(!back)
+                    {
+                        float mouthX=Mathf.Clamp(x,.349f,.651f);
+                        float mouthY=SmileHeight(mouthX,.151f,.655f,.024f);
+                        Fill(ref face,new Vector2(x-mouthX,y-mouthY).magnitude-.0027f,ink);
+                    }
+                    break;
+                case (int)AnimalKind.Gorilla:
+                    shape=Join(E(x,y,.5f,.775f,.226f,.154f),E(x,y,.5f,.686f,.200f,.101f),.031f);
+                    for(int side=-1;side<=1;side+=2)
+                        shape=Join(shape,E(x,y,.5f+side*.207f,.753f,.046f,.051f),.014f);
+                    if(back)break;
+                    float gorillaBrow=Join(E(x,y,.420f,.782f,.096f,.071f,-.12f),E(x,y,.580f,.782f,.096f,.071f,.12f),.025f);
+                    float faceMask=Join(gorillaBrow,E(x,y,.5f,.702f,.155f,.089f),.039f);
+                    Ring(ref face,faceMask,.0024f);
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        float cx=.5f+side*.077f;
+                        Eye(ref face,x,y,cx,.783f,.015f);
+                        Fill(ref face,E(x,y,.5f+side*.035f,.727f,.014f,.008f,side*.35f),ink);
+                        if(side*(x-.5f)>.213f)
+                            Ring(ref face,E(x,y,.5f+side*.222f,.753f,.017f,.030f),.0018f);
+                    }
+                    if(y>.726f)Ring(ref face,E(x,y,.5f,.726f,.061f,.028f),.0019f);
+                    Smile(ref face,x,y,.5f,.687f,.078f);
                     break;
                 default:
                     shape=1;

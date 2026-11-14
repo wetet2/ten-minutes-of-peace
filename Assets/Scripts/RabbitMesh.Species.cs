@@ -85,6 +85,28 @@ namespace PeacePark
                         new Vector3(0,2.99f,-1.15f),new Vector3(0,3.29f,-1.43f),.155f,.065f);
                     return Blend(Blend(head,browHorn,.12f),noseHorn,.10f);
                 }
+                case AnimalKind.Crocodile:
+                {
+                    float skull=Oval(p,0,3.08f,.08f,.88f,.68f,.77f);
+                    float snout=Oval(p,0,2.87f,-.89f,.65f,.31f,.80f);
+                    float jaw=Oval(p,0,2.67f,-.80f,.60f,.195f,.75f);
+                    float brow=Oval(symmetric,.47f,3.48f,-.24f,.28f,.29f,.39f);
+                    return Blend(Blend(skull,brow,.13f),Blend(snout,jaw,.10f),.19f);
+                }
+                case AnimalKind.Hippo:
+                {
+                    float skull=Oval(p,0,3.08f,.045f,.88f,.76f,.84f);
+                    float muzzle=Oval(p,0,2.76f,-.68f,.87f,.43f,.70f);
+                    float ears=Oval(symmetric,.66f,3.72f,.08f,.22f,.24f,.19f);
+                    return Blend(Blend(skull,muzzle,.20f),ears,.10f);
+                }
+                case AnimalKind.Gorilla:
+                {
+                    float crown=Oval(p,0,3.13f,.09f,1.00f,.82f,.86f);
+                    float jaw=Oval(p,0,2.80f,-.46f,.76f,.50f,.58f);
+                    float ears=Oval(symmetric,.91f,3.10f,.06f,.23f,.24f,.18f);
+                    return Blend(Blend(crown,jaw,.17f),ears,.10f);
+                }
                 default:return 100f;
             }
         }
@@ -99,6 +121,10 @@ namespace PeacePark
                     return TaperedCapsule(p,new Vector3(.03f,1.40f,.40f),new Vector3(.82f,.83f,1.08f),.137f,.100f);
                 case AnimalKind.Triceratops:
                     return TaperedCapsule(p,new Vector3(0,1.40f,.36f),new Vector3(.66f,.89f,1.19f),.23f,.10f);
+                case AnimalKind.Crocodile:
+                    return TaperedCapsule(p,new Vector3(.08f,1.37f,.36f),new Vector3(.80f,.81f,1.42f),.23f,.055f);
+                case AnimalKind.Hippo:
+                    return TaperedCapsule(p,new Vector3(0,1.41f,.43f),new Vector3(.15f,1.12f,.83f),.096f,.053f);
                 case AnimalKind.Giraffe:
                 case AnimalKind.Elephant:
                 {
@@ -121,8 +147,8 @@ namespace PeacePark
             if(point.y>2.15f)
             {
                 // The shared chest keeps its coordinates. Each head fits its own canvas contour.
-                float faceTop=kind==AnimalKind.Giraffe?5.12f:kind==AnimalKind.Triceratops?4.46f:kind==AnimalKind.Frog?3.77f:3.94f;
-                float topUv=kind==AnimalKind.Giraffe?.965f:kind==AnimalKind.Frog?.88f:.92f;
+                float faceTop=kind==AnimalKind.Giraffe?5.12f:kind==AnimalKind.Triceratops?4.46f:kind==AnimalKind.Frog||kind==AnimalKind.Crocodile?3.77f:3.94f;
+                float topUv=kind==AnimalKind.Giraffe?.965f:kind==AnimalKind.Frog?.88f:kind==AnimalKind.Crocodile?.907f:.92f;
                 y=Mathf.Lerp(2.15f/4.5f,topUv,Mathf.InverseLerp(2.15f,faceTop,point.y));
             }
             float halfWidth=kind==AnimalKind.Elephant?1.72f:kind==AnimalKind.Triceratops?1.68f:1.3f;
@@ -235,6 +261,33 @@ namespace PeacePark
                         Feature(side*.167f,2.85f,new Vector3(.030f,.024f,.018f),1,.005f,side*13);
                     }
                     Smile(2.63f,.265f,.075f);
+                    break;
+                case AnimalKind.Crocodile:
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        Eye(side*.47f,3.52f,false);
+                        Feature(side*.24f,2.98f,new Vector3(.072f,.039f,.027f),1,.012f,side*20);
+                        Feature(side*.43f,2.67f,new Vector3(.052f,.085f,.038f),3,.006f,side*14);
+                    }
+                    Smile(2.65f,.49f,.10f);
+                    break;
+                case AnimalKind.Hippo:
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        Eye(side*.39f,3.32f,false);
+                        Feature(side*.67f,3.76f,new Vector3(.105f,.112f,.035f),2,.019f);
+                        Feature(side*.41f,2.92f,new Vector3(.087f,.055f,.028f),1,.017f,side*13);
+                        Feature(side*.16f,2.48f,new Vector3(.069f,.075f,.031f),3,.012f);
+                    }
+                    Smile(2.55f,.42f,.11f);
+                    break;
+                case AnimalKind.Gorilla:
+                    for(int side=-1;side<=1;side+=2)
+                    {
+                        Eye(side*.30f,3.20f,false);
+                        Feature(side*.13f,2.96f,new Vector3(.051f,.036f,.028f),1,.008f);
+                    }
+                    Smile(2.72f,.23f,.06f);
                     break;
             }
         }

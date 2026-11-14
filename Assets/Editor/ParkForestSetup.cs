@@ -67,7 +67,7 @@ namespace PeacePark.Editor
                 Name="숲", Root=root.gameObject, Houses=new[]{house},
                 LawnHeight=Ground, WalkArea=Rect.MinMaxRect(-9.6f,-7.5f,9.6f,2.3f),
                 PondCenter=PondCenter, PondRadii=PondSize+new Vector2(.48f,.48f),
-                Focus=new Vector3(0,1.45f,1), Distance=35.2f, Yaw=-6, Pitch=41,
+                Focus=new Vector3(0,1.5f,1.1f), Distance=30.8f, Yaw=-6, Pitch=32,
                 Sky=new Color32(196,227,214,255)
             };
         }
@@ -220,7 +220,6 @@ namespace PeacePark.Editor
                     nature.Place(i%2==0?"UNS_Mushroom_Patch":"UNS_Grass",p,.32f+i%3*.13f,i*53);
                     nature.Place(i%3==0?"UNS_Flower":"UNS_Grass",p+new Vector3(-side*.7f,0,1.05f),.33f+i%4*.08f,i*38);
                 }
-                nature.Place("UNS_Log",new Vector3(side*11.4f,Ground,-4.5f+side),.83f,side*53);
                 nature.Place("UNS_Stump",new Vector3(side*10.7f,Ground,4.1f+side),.78f,side*26);
             }
             nature.Place("UNS_Standard_Rock_02",new Vector3(-7.1f,Ground,2.8f),.95f,30);

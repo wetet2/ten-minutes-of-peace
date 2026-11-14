@@ -15,7 +15,7 @@ namespace PeacePark
         const float HeadDepth=.96f;
         const float PreviousHeadDepth=.62f;
         // The baked rigs include ground-contact samples for the shared walking pose.
-        public const int GeometryVersion=9;
+        public const int GeometryVersion=11;
         public const float ShoulderHeight=2f;
         const float LegScale=.9f;
         const float TemplateHipHeight=1.26f;
@@ -103,7 +103,7 @@ namespace PeacePark
                 if(p.y<=.55f)return new BoneWeight{boneIndex0=legBone,weight0=1};
                 float innerThigh=Smooth(.06f,.29f,Mathf.Abs(p.x));
                 float leg=(1-Smooth(.76f,1.54f,p.y))*Mathf.Lerp(1,innerThigh,Smooth(.55f,.95f,p.y));
-                return new BoneWeight{boneIndex0=0,weight0=1-leg,boneIndex1=legBone,weight1=leg};
+                return OrderedWeights(0,1-leg,legBone,leg);
             }
             float region=Smooth(-.09f,.09f,Torso(p)-Arm(p,side));
             float head=Smooth(2.15f,2.55f,p.y);
@@ -116,7 +116,26 @@ namespace PeacePark
             // above the old arm-only mask. Fade inward so the neck and chest stay stable.
             float cap=Smooth(.18f,.6f,Mathf.Abs(p.x))*Smooth(1.78f,2.08f,p.y)*(1-Smooth(2.18f,2.43f,p.y));
             float shoulder=Mathf.Max(region*(1-tip),cap*(1-head-arm));
-            return new BoneWeight{boneIndex0=0,weight0=1-arm-shoulder-head,boneIndex1=side<0?6:7,weight1=shoulder,boneIndex2=side<0?2:3,weight2=arm,boneIndex3=1,weight3=head};
+            return OrderedWeights(0,1-arm-shoulder-head,side<0?6:7,shoulder,side<0?2:3,arm,1,head);
+        }
+
+        // Unity reads the weights in descending order. A head-only vertex must put
+        // its single influence in the first slot, just like the facial details do.
+        static BoneWeight OrderedWeights(int first,float a,int second,float b,int third=0,float c=0,int fourth=0,float d=0)
+        {
+            void SortPair(ref int x,ref float xWeight,ref int y,ref float yWeight)
+            {
+                if(xWeight>=yWeight)return;
+                (x,y)=(y,x);
+                (xWeight,yWeight)=(yWeight,xWeight);
+            }
+            SortPair(ref first,ref a,ref second,ref b);
+            SortPair(ref third,ref c,ref fourth,ref d);
+            SortPair(ref first,ref a,ref third,ref c);
+            SortPair(ref second,ref b,ref fourth,ref d);
+            SortPair(ref second,ref b,ref third,ref c);
+            return new BoneWeight{boneIndex0=first,weight0=a,boneIndex1=second,weight1=b,
+                boneIndex2=third,weight2=c,boneIndex3=fourth,weight3=d};
         }
 
         public static Mesh Build(AnimalKind kind,out int skinVertexCount,out int[] skinTriangles)
@@ -124,8 +143,8 @@ namespace PeacePark
             const float step=.065f;
             int nx=kind==AnimalKind.Elephant?59:53;
             int ny=kind==AnimalKind.Giraffe?88:81;
-            int nz=kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?53:
-                kind==AnimalKind.Triceratops?51:kind==AnimalKind.Tiger?41:37;
+            int nz=kind==AnimalKind.Crocodile?57:kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?53:
+                kind==AnimalKind.Triceratops?51:kind==AnimalKind.Tiger?41:kind==AnimalKind.Hippo?47:37;
             var origin=new Vector3(-(nx-1)/2*step,-.08f,-(nz-1)/2*step);
             var points=new Vector3[nx*ny*nz];var values=new float[points.Length];
             for(int z=0;z<nz;z++)for(int y=0;y<ny;y++)for(int x=0;x<nx;x++)
@@ -150,7 +169,10 @@ namespace PeacePark
                 int id=vertices.Count;cache.Add(key,id);vertices.Add(shortened);normals.Add(normal.normalized);weights.Add(Weight(p,kind));
                 // UVs follow the lowered drawing pose although the rig is bound in an A-pose.
                 var drawingPoint=p;var w=weights[id];float influence=0;
+                if(w.boneIndex0==2||w.boneIndex0==3)influence+=w.weight0;
+                if(w.boneIndex1==2||w.boneIndex1==3)influence+=w.weight1;
                 if(w.boneIndex2==2||w.boneIndex2==3)influence+=w.weight2;
+                if(w.boneIndex3==2||w.boneIndex3==3)influence+=w.weight3;
                 if(influence>0){var pivot=new Vector3(p.x<0?-.57f:.57f,ShoulderHeight,0);drawingPoint=Vector3.Lerp(p,pivot+Quaternion.Euler(0,0,p.x<0?40:-40)*(p-pivot),influence);}
                 drawingPoint.y-=HeadLift*Smooth(2.15f,2.55f,p.y);
                 // Stretch the existing drawing's leg region onto the longer 3D legs,
@@ -193,7 +215,7 @@ namespace PeacePark
             var submeshes=new[]{faces,new List<int>(),new List<int>(),new List<int>()};
             void Detail(Vector3 center,Vector3 radius,int material,float roll,int bone)
             {
-                int start=vertices.Count;const int rings=16,segments=24;
+                int start=vertices.Count;const int rings=10,segments=16;
                 var rotation=Quaternion.Euler(0,0,roll);
                 for(int y=0;y<=rings;y++)for(int x=0;x<=segments;x++)
                 {
@@ -226,7 +248,8 @@ namespace PeacePark
                 for(int s=-1;s<=1;s+=2)for(int i=0;i<10;i++)
                 {float t=i/9f;FaceDetail(new Vector3(s*t*.13f,2.66f-.045f*Mathf.Sin(t*Mathf.PI),-.653f),new Vector3(.018f,.018f,.012f),1);}
             }
-            var mesh=new Mesh{name=kind+" continuous skinned surface",indexFormat=IndexFormat.UInt32};
+            var mesh=new Mesh{name=kind+" continuous skinned surface",
+                indexFormat=vertices.Count<=ushort.MaxValue?IndexFormat.UInt16:IndexFormat.UInt32};
             mesh.SetVertices(vertices);mesh.SetNormals(normals);mesh.SetUVs(0,uv);mesh.SetUVs(1,sides);mesh.SetUVs(2,restPositions);mesh.boneWeights=weights.ToArray();mesh.subMeshCount=4;
             for(int i=0;i<4;i++)mesh.SetTriangles(submeshes[i],i);mesh.RecalculateBounds();
             RabbitShoulderCorrective.SmoothWeights(mesh,skinVertexCount,skinTriangles);return mesh;

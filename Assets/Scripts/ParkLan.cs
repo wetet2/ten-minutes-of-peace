@@ -76,6 +76,7 @@ namespace PeacePark
             readonly SemaphoreSlim slots = new SemaphoreSlim(4);
             readonly Queue<Arrival> inbox = new Queue<Arrival>();
             readonly HashSet<Guid> accepted = new HashSet<Guid>();
+            readonly UdpClient discovery;
             bool disposed;
 
             sealed class Arrival
@@ -90,6 +91,7 @@ namespace PeacePark
             {
                 listener.ExclusiveAddressUse = true;
                 listener.Start(8);
+                discovery=ParkLanDiscovery.StartResponder();
                 _ = Listen();
             }
 
@@ -193,6 +195,7 @@ namespace PeacePark
                 if (disposed) return;
                 disposed = true;
                 stop.Cancel();
+                discovery?.Dispose();
                 listener.Stop();
                 lock (inbox) inbox.Clear();
             }

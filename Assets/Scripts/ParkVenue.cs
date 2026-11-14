@@ -14,6 +14,7 @@ namespace PeacePark
         public float LawnHeight;
         public Rect WalkArea;
         public Vector2 PondCenter, PondRadii;
+        public Rect[] WalkObstacles;
         public Vector3 Focus;
         public float Distance, Yaw, Pitch;
         public Color Sky;

@@ -19,6 +19,7 @@ namespace PeacePark
         public int OpenCount {get;private set;}
         public int CompletedExits {get;private set;}
         bool opening;
+        internal int LastDepartureDirection {get;set;}=-1;
 
         public bool TryReserve()
         {

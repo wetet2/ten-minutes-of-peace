@@ -42,6 +42,18 @@ namespace PeacePark.Editor
 
             if (countryside)
             {
+                var meadow = countryside.transform.Find("Continuous meadow");
+                var lawn = park.transform.Find("Meadow island");
+                if (meadow && lawn)
+                {
+                    var floor = meadow.GetComponent<MeshRenderer>();
+                    var patch = lawn.GetComponent<MeshRenderer>();
+                    // Place both surfaces at the same walking height and render only
+                    // the continuous one, avoiding competing depth values on mobile.
+                    meadow.position += Vector3.up * (patch.bounds.max.y - floor.bounds.max.y);
+                    floor.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    patch.enabled = false;
+                }
                 foreach (Transform item in countryside.transform)
                 {
                     if (item.name == "Welcome trail") item.localScale = Expand(item.localScale);
@@ -51,8 +63,16 @@ namespace PeacePark.Editor
 
             var controller = playground.GetComponent<ParkPlayground>();
             var area = controller.WalkArea;
-            controller.WalkArea = new Rect(area.position * Expansion, area.size * Expansion);
-            if (controller.OrbitCamera) controller.OrbitCamera.distance *= Expansion;
+            area = new Rect(area.position * Expansion, area.size * Expansion);
+            // Keep the enlarged cottages' welcome points inside the meadow walk area.
+            area.yMax = Mathf.Max(area.yMax, 1.6f);
+            controller.WalkArea = area;
+            if (controller.OrbitCamera)
+            {
+                controller.OrbitCamera.focus = new Vector3(0, 1.35f, .65f);
+                controller.OrbitCamera.pitch = 32;
+                controller.OrbitCamera.distance = 33.6f;
+            }
             controller.Fountain = ParkFountainSetup.Create(park.transform);
         }
     }

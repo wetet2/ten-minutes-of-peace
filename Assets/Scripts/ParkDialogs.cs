@@ -7,18 +7,19 @@ namespace PeacePark
 {
     internal sealed class ParkDialogs : MonoBehaviour
     {
-        const float CardWidth = 520, ConnectionHeight = 356, InfoHeight = 386;
+        const float CardWidth = 520, ConnectionHeight = 386, SettingsHeight = 386;
         static readonly Color Cream = new Color32(255, 249, 229, 255);
         static readonly Color Green = new Color32(187, 227, 140, 255);
         static readonly Color Neutral = new Color32(246, 232, 196, 255);
         ParkPlayground park;
-        RectTransform connection, info, venues;
-        Text status, addressSummary, infoTitle;
+        RectTransform connection, settings, venues;
+        Text addressSummary;
         Image[] venueCards;
         InputField address;
-        Button connect;
+        Button connect, discover;
         Sprite rounded;
         Texture2D texture;
+        internal Sprite ToastBackground=>rounded;
         Rect lastArea;
         int lastScreenHeight;
 
@@ -39,27 +40,33 @@ namespace PeacePark
 
             connection = Card("Connection Popup", root);
             Caption(connection, "놀이 공간에 연결하기", 34, new Rect(28, 17, 464, 53), true);
-            Caption(connection, "같은 Wi-Fi에 연결한 뒤, 호스트 화면 상단의\n‘i’ 버튼을 눌러 확인한 IP 주소를 입력하세요.",
-                20, new Rect(32, 75, 456, 62));
+            Caption(connection, "호스트와 같은 Wi-Fi에 연결하세요.", 20, new Rect(32, 72, 456, 34));
+            discover = Action(connection, "자동 찾기", new Rect(32, 113, 456, 54), Green);
+            discover.onClick.AddListener(() => park.Lan.BeginDiscovery());
+            Caption(connection, "직접 연결하려면 호스트의 설정에서 IP를 확인하세요.",
+                17, new Rect(32, 178, 456, 30));
             address = AddressField(connection);
-            connect = Action(connection, "연결하고 색칠", new Rect(32, 208, 456, 52), Green);
+            connect = Action(connection, "직접 연결", new Rect(32, 268, 456, 42), Neutral);
             connect.onClick.AddListener(() => park.Lan.BeginJoin(address.text));
-            status = Caption(connection, "", 17, new Rect(32, 264, 456, 34));
-            Action(connection, "닫기", new Rect(180, 303, 160, 42), Neutral).onClick.AddListener(park.CloseDialog);
+            Action(connection, "닫기", new Rect(180, 345, 160, 32), Neutral).onClick.AddListener(park.CloseDialog);
 
-            info = Card("Park Information Popup", root);
-            infoTitle = Caption(info, "", 34, new Rect(28, 17, 464, 53), true);
-            Caption(info, "접속 IP 주소", 21, new Rect(36, 77, 448, 30), true, TextAnchor.MiddleLeft);
-            Surface("IP Address Panel", info, new Rect(32, 111, 456, 78), new Color32(240, 244, 215, 255));
-            addressSummary = Caption(info, "", 20, new Rect(48, 118, 424, 62), false, TextAnchor.MiddleLeft);
+            settings = Card("Park Settings Popup", root);
+            Caption(settings, "설정", 34, new Rect(28, 17, 464, 53), true);
+            Caption(settings, "접속 IP 주소", 21, new Rect(36, 77, 448, 30), true, TextAnchor.MiddleLeft);
+            Surface("IP Address Panel", settings, new Rect(32, 111, 456, 78), new Color32(240, 244, 215, 255));
+            addressSummary = Caption(settings, "", 20, new Rect(48, 118, 424, 62), false, TextAnchor.MiddleLeft);
             addressSummary.verticalOverflow = VerticalWrapMode.Truncate;
             addressSummary.resizeTextForBestFit = true;
             addressSummary.resizeTextMinSize = 12;
             addressSummary.resizeTextMaxSize = 20;
-            Caption(info, "조작 방법", 21, new Rect(36, 199, 448, 31), true, TextAnchor.MiddleLeft);
-            Caption(info, "왼쪽 드래그  시점 회전   ·   오른쪽 드래그  화면 이동\n마우스 휠  확대·축소\n카메라 초기화 또는 Home  처음 시점",
+            Caption(settings, "조작 방법", 21, new Rect(36, 199, 448, 31), true, TextAnchor.MiddleLeft);
+            string cameraHelp=Application.isMobilePlatform
+                ? "한 손가락으로 밀기  회전\n두 손가락을 함께 밀기  화면 이동\n두 손가락을 벌리거나 오므리기  확대·축소"
+                : "왼쪽 드래그  시점 회전   ·   오른쪽 드래그  화면 이동\n마우스 휠  확대·축소\n카메라 초기화 또는 Home  처음 시점";
+            Caption(settings, cameraHelp,
                 19, new Rect(36, 232, 448, 65), false, TextAnchor.MiddleLeft);
-            Action(info, "닫기", new Rect(180, 323, 160, 46), Neutral).onClick.AddListener(park.CloseDialog);
+            Action(settings, "시작 화면으로", new Rect(32, 323, 220, 46), Neutral).onClick.AddListener(park.ReturnToModeSelection);
+            Action(settings, "닫기", new Rect(268, 323, 220, 46), Green).onClick.AddListener(park.CloseDialog);
 
             venues = Card("Venue Picker", root);
             Caption(venues, "놀이 장소 고르기", 34, new Rect(28, 17, 464, 53), true);
@@ -69,7 +76,8 @@ namespace PeacePark
             {
                 int index = i;
                 int row = i / 2;
-                var card = Surface(choices[i].Name, venues, new Rect(30 + (i % 2) * 236, 86 + row * 178, 224, 164), Neutral);
+                float x = i % 2 == 0 && i == venueCards.Length - 1 ? (CardWidth - 224) / 2 : 30 + (i % 2) * 236;
+                var card = Surface(choices[i].Name, venues, new Rect(x, 86 + row * 178, 224, 164), Neutral);
                 venueCards[i] = card;
                 var button = card.gameObject.AddComponent<Button>();
                 button.targetGraphic = card;
@@ -86,21 +94,18 @@ namespace PeacePark
 
         float VenueHeight => 150 + Mathf.Max(1, (venueCards.Length + 1) / 2) * 178;
 
-        internal void Show(bool showConnection, bool showInfo, bool showVenues)
+        internal void Show(bool showConnection, bool showSettings, bool showVenues)
         {
-            if (EventSystem.current && (gameObject.activeSelf || showConnection || showInfo || showVenues))
+            if (EventSystem.current && (gameObject.activeSelf || showConnection || showSettings || showVenues))
                 EventSystem.current.SetSelectedGameObject(null);
             connection.gameObject.SetActive(showConnection);
-            info.gameObject.SetActive(showInfo);
+            settings.gameObject.SetActive(showSettings);
             venues.gameObject.SetActive(showVenues);
-            gameObject.SetActive(showConnection || showInfo || showVenues);
+            gameObject.SetActive(showConnection || showSettings || showVenues);
             if (showConnection) RefreshConnection();
-            if (showInfo)
-            {
-                infoTitle.text = park.ThemeName + " 안내";
+            if (showSettings)
                 addressSummary.text = park.Lan.HostAddresses ??
                     "다른 기기를 연결하려면 시작 화면에서 놀이 공간을 열어 주세요.";
-            }
             if (showVenues)
                 for (int i = 0; i < venueCards.Length; i++)
                     venueCards[i].color = i == park.VenueIndex ? Green : Neutral;
@@ -115,8 +120,7 @@ namespace PeacePark
 
         void RefreshConnection()
         {
-            status.text = park.Lan.Message;
-            address.interactable = connect.interactable = !park.Lan.IsJoining;
+            address.interactable = connect.interactable = discover.interactable = !park.Lan.IsJoining;
         }
 
         void RefreshLayout()
@@ -125,11 +129,11 @@ namespace PeacePark
             if ((safe == lastArea && Screen.height == lastScreenHeight) || safe.width <= 0 || safe.height <= 0) return;
             lastArea = safe;
             lastScreenHeight = Screen.height;
-            float scale = Mathf.Min(safe.width / (CardWidth + 36), safe.height / (Mathf.Max(InfoHeight, VenueHeight) + 36),
+            float scale = Mathf.Min(safe.width / (CardWidth + 36), safe.height / (Mathf.Max(SettingsHeight, VenueHeight) + 36),
                 Mathf.Max(.82f, safe.height / 900f));
             Vector2 center = new Vector2(safe.center.x, Screen.height - safe.center.y);
             LayoutCard(connection, center, ConnectionHeight, scale);
-            LayoutCard(info, center, InfoHeight, scale);
+            LayoutCard(settings, center, SettingsHeight, scale);
             LayoutCard(venues, center, VenueHeight, scale);
         }
 
@@ -159,16 +163,20 @@ namespace PeacePark
 
         InputField AddressField(RectTransform parent)
         {
-            var surface = Surface("IP Address", parent, new Rect(32, 145, 456, 53),
+            var surface = Surface("IP Address", parent, new Rect(32, 210, 456, 50),
                 new Color32(238, 242, 215, 255));
             var input = surface.gameObject.AddComponent<InputField>();
             input.targetGraphic = surface;
-            input.textComponent = Caption(surface.rectTransform, "", 26, new Rect(12, 0, 432, 53));
+            var textBounds = new Rect(12, 0, 432, 50);
+            input.textComponent = Caption(surface.rectTransform, "", 26, textBounds);
+            var placeholder = Caption(surface.rectTransform, "192.168.", 26, textBounds);
+            placeholder.color = new Color32(111, 110, 91, 255);
+            placeholder.raycastTarget = false;
+            input.placeholder = placeholder;
             input.textComponent.supportRichText = false;
             input.lineType = InputField.LineType.SingleLine;
             input.keyboardType = TouchScreenKeyboardType.URL;
             input.characterLimit = 45;
-            input.text = "127.0.0.1";
             return input;
         }
 
