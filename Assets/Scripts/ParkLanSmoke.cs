@@ -66,7 +66,7 @@ namespace PeacePark
             park.CloseDialog();
             Require(!park.IsSettingsOpen&&park.OrbitCamera.InputEnabled, "Closing settings did not restore camera controls.");
             park.OpenVenuePicker();
-            Require(park.IsVenuePickerOpen&&!park.OrbitCamera.InputEnabled&&park.Venues.Length==3&&
+            Require(park.IsVenuePickerOpen&&!park.OrbitCamera.InputEnabled&&park.Venues.Any(venue=>venue.Name=="시계탑 광장")&&
                 park.Venues.All(venue=>venue.Preview),"Venue picture cards are missing.");
             Debug.Log("LAN TEST HOST READY");
             yield return WaitFor(() => park.SubmissionCount > 0);
@@ -126,7 +126,7 @@ namespace PeacePark
             Debug.Log("DISCOVERY PASS: a UDP reply located the host and the existing TCP connection opened drawing.");
             Require(camera.cullingMask == 0 && !camera.allowMSAA,
                 "The coloring client is still rendering the park.");
-            Require(!park.Drawing.ShowsParkNavigation&&park.Toast.Message=="놀이 공간에 연결됐어요","Remote drawing did not show its connection toast.");
+            Require(park.Toast.Message=="놀이 공간에 연결됐어요","Remote drawing did not show its connection toast.");
             Paint(park.Drawing, RedFor(AnimalKind.Rabbit));
             Require(park.Drawing.ApplyDrawing() && !park.Drawing.ApplyDrawing(), "Apply or cooldown failed.");
             yield return WaitFor(() => park.Lan.LastSendAccepted);

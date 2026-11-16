@@ -6,11 +6,13 @@ namespace PeacePark.Editor
 {
     internal static class ParkKidsCafeSetup
     {
-        static readonly Vector2 BallPit = new Vector2(-.25f,-.30f);
-        static readonly Vector2 PitRadii = new Vector2(4.05f,2.75f);
-        const float RoomWidth=26f,RoomDepth=17.5f,WallThickness=.38f,WallHeight=5.1f;
-        static readonly Vector3 EntrancePosition=new Vector3(-RoomWidth/2+3.95f,0,RoomDepth/2-2.85f);
-        static readonly Vector3 TablePosition=new Vector3(-RoomWidth/2+3.17f,0,-RoomDepth/2+3.28f);
+        static readonly Vector2 RoundaboutCenter = new Vector2(-.25f,-.30f);
+        const float RoundaboutRadius = 3.05f;
+        const float RoomWidth=26f,RoomDepth=17.5f;
+        static readonly Vector3 TowerPosition=new Vector3(5.95f,0,3.35f);
+        static readonly Vector3 PolePosition=new Vector3(-8.10f,0,4.45f);
+        static readonly Vector3 TrampolinePosition=new Vector3(-8.80f,0,-5.10f);
+        static readonly Vector3 SeesawPosition=new Vector3(8.15f,0,-5.58f);
 
         internal static ParkVenue Create(Transform root)
         {
@@ -25,99 +27,108 @@ namespace PeacePark.Editor
             var blue=Paint("Sky-blue foam","#8BB9EA");
             var yellow=Paint("Buttercup slide","#FFD358");
             var coral=Paint("Apricot foam","#FA946F");
-            var white=Paint("Vanilla clouds","#FFF3DB");
-            var leaf=Paint("Window treetops","#94C95D");
-            var square=PrimitiveMesh(PrimitiveType.Cube);
-            var room=new Pieces();
-            void Box(Material m,float x,float y,float z,float w,float h,float d)=>room.Add(box,m,new Vector3(x,y,z),new Vector3(w,h,d));
-            void Straight(string name,Material m,float x,float y,float z,float w,float h,float d)=>
-                ParkGeometry.Place(name,square,root,new Vector3(x,y,z),new Vector3(w,h,d),m);
             float left=-RoomWidth/2,back=RoomDepth/2;
-            float sideX=left+WallThickness/2,backZ=back-WallThickness/2;
-            float sideDepth=RoomDepth-WallThickness,sideZ=-WallThickness/2;
-            Straight("Rectangular floor base",mint,0,-.555f,0,RoomWidth,.59f,RoomDepth);
-            Straight("Rectangular play floor",cream,0,-.13f,0,RoomWidth,.26f,RoomDepth);
-            float wallTop=WallHeight-.10f;
-            Straight("Left wall",plaster,sideX,wallTop/2,sideZ,WallThickness,wallTop,sideDepth);
-            Straight("Left wall cap",mint,sideX,WallHeight,sideZ,WallThickness,.20f,sideDepth);
-            Straight("Left padded skirting",mint,left+WallThickness+.065f,.48f,sideZ,.13f,.96f,sideDepth);
-            Straight("Back wall sill",plaster,0,.77f,backZ,RoomWidth,1.54f,WallThickness);
-            Straight("Back wall header",plaster,0,(4.46f+wallTop)/2,backZ,RoomWidth,wallTop-4.46f,WallThickness);
-            Straight("Back wall cap",mint,0,WallHeight,backZ,RoomWidth,.20f,WallThickness);
-            const float windowHalfWidth=3.12f;
-            float wallStart=left;
-            foreach(float x in new[]{-.65f,7.15f})
-            {
-                float windowLeft=x-windowHalfWidth;
-                Straight("Back wall beside window",plaster,(wallStart+windowLeft)/2,3,backZ,windowLeft-wallStart,2.92f,WallThickness);
-                wallStart=x+windowHalfWidth;
-                Box(blue,x,3,back-.08f,6.3f,2.94f,.12f);
-                for(int j=0;j<6;j++)
-                    room.Add(sphere,leaf,new Vector3(x-2.5f+j,1.75f+j%3*.15f,back-.21f),new Vector3(1.58f,1.0f+j%2*.22f,.15f));
-                float frameZ=back-WallThickness-.03f;
-                for(int edge=-1;edge<=1;edge++)Box(wood,x+edge*windowHalfWidth,3,frameZ,.20f,3.1f,.20f);
-                for(int edge=-1;edge<=1;edge++)Box(wood,x,3+edge*1.46f,frameZ,6.45f,.19f,.20f);
-            }
-            Straight("Back wall right end",plaster,(wallStart-left)/2,3,backZ,-left-wallStart,2.92f,WallThickness);
-            for(int i=0;i<5;i++)
-            {
-                float z=1.9f+i*.31f;
-                room.Add(sphere,white,new Vector3(left+WallThickness+.11f,3.65f+Mathf.Sin(i*Mathf.PI/4)*.24f,z),new Vector3(.18f,.66f,.73f));
-            }
-            Box(mint,6.6f,.015f,4.84f,7.12f,.035f,4.7f);
-            room.Build(root);
+            ParkCafeTerrace.Create(root,RoomWidth,RoomDepth,cream,box,sphere);
 
-            var gate=CreateEntrance(root,box,sphere,mint,wood,shade,plaster,yellow);
-            CreateBallPit(root,box,sphere,cylinder,mint,coral,blue,yellow,white);
-            CreateTable(root,box,sphere,cylinder,wood,yellow,mint,white);
-            var play=new Pieces();
-            play.Add(box,coral,new Vector3(4.4f,.42f,5.15f),new Vector3(1.65f,.84f,1.65f));
-            play.Add(box,blue,new Vector3(9.24f,.52f,5.15f),new Vector3(1.64f,1.04f,1.65f));
-            play.Add(Arch(1.4f,1.08f,.60f,1.35f),yellow,new Vector3(6.81f,0,5.12f),new Vector3(1.55f,1.21f,1.34f));
-            play.Add(box,coral,new Vector3(8.18f,.39f,2.64f),new Vector3(.75f,.78f,.76f),Quaternion.Euler(0,22,0));
-            play.Add(box,blue,new Vector3(9.08f,.30f,2.29f),new Vector3(.62f,.60f,.62f),Quaternion.Euler(0,-15,0));
-            play.Add(box,yellow,new Vector3(7.4f,.46f,2.74f),new Vector3(.74f,.92f,.74f));
-            play.Build(Group("Soft climbing toys",root,Vector3.zero));
-
+            CreateRoundabout(root,sphere,cylinder,mint,yellow);
+            var slide=CreateSlide(root,box,sphere,cylinder,mint,blue,yellow,coral);
+            var gate=CreateLookout("Spiral slide lookout",slide.transform,new Vector3(SpiralRadius,TowerHeight,.80f),
+                box,sphere,mint,wood,shade,plaster,yellow);
+            gate.DisplayName="미끄럼틀 꼭대기";
+            gate.Welcome=Group("Welcome",gate.transform,gate.transform.InverseTransformPoint(slide.Exit));
+            gate.EntranceSlide=slide;
+            slide.Entrance=gate;
+            var pole=CreatePoleTower(root,box,sphere,cylinder,blue,wood,shade,plaster,yellow,coral,mint);
+            CreateTrampoline(root,box,sphere,cylinder,mint,coral,blue);
+            CreateSeesaw(root,box,sphere,cylinder,mint,coral,blue,yellow);
             return new ParkVenue
             {
-                Name="키즈카페",Root=root.gameObject,Houses=new[]{gate},LawnHeight=0,
-                WalkArea=Rect.MinMaxRect(left+1.15f,-back+1.08f,-left-1.15f,back-.90f),
-                PondCenter=BallPit,PondRadii=PitRadii+new Vector2(.62f,.62f),
-                WalkObstacles=new[]{Rect.MinMaxRect(BallPit.x+SlideCenter-SlideWidth/2-.8f,BallPit.y+SlideTop-.5f,
-                    BallPit.x+SlideCenter+SlideWidth/2+.8f,BallPit.y+SlideTop+LandingDepth+StepDepth*StepCount+.55f),
-                    Rect.MinMaxRect(3.05f,1.79f,10.36f,6.37f),
-                    Rect.MinMaxRect(TablePosition.x-2.14f,TablePosition.z-1.48f,TablePosition.x+2.13f,TablePosition.z+1.62f),
-                    Rect.MinMaxRect(EntrancePosition.x-1.79f,EntrancePosition.z-.17f,EntrancePosition.x+1.90f,EntrancePosition.z+2.05f)},
-                Focus=new Vector3(0,1.48f,.15f),Distance=29.7f,Yaw=-15,Pitch=37,
-                Sky=new Color32(219,226,207,255)
+                Name="놀이터",Root=root.gameObject,Houses=new[]{gate,pole},LawnHeight=0,Slide=slide,
+                WalkArea=Rect.MinMaxRect(left-.40f,-back-.75f,-left+.40f,back-.90f),
+                PondCenter=RoundaboutCenter,PondRadii=Vector2.one*(RoundaboutRadius+.35f),
+                WalkObstacles=new[]{
+                    Rect.MinMaxRect(TowerPosition.x-3.7f,TowerPosition.z-2.75f,TowerPosition.x+3.72f,TowerPosition.z+3.72f),
+                    Rect.MinMaxRect(TowerPosition.x+3.72f,TowerPosition.z-2.45f,TowerPosition.x+6.57f,TowerPosition.z+3.74f),
+                    Rect.MinMaxRect(PolePosition.x-1.93f,PolePosition.z-2.13f,PolePosition.x+1.93f,PolePosition.z+2.65f),
+                    Rect.MinMaxRect(TrampolinePosition.x-2.35f,TrampolinePosition.z-2.75f,TrampolinePosition.x+2.35f,TrampolinePosition.z+2.35f),
+                    Rect.MinMaxRect(SeesawPosition.x-2.64f,SeesawPosition.z-1.19f,SeesawPosition.x+2.64f,SeesawPosition.z+1.19f)},
+                Focus=new Vector3(.25f,1.55f,1.8f),Distance=41f,Yaw=-8,Pitch=34,
+                Sky=new Color32(194,224,213,255)
             };
         }
 
-        static ParkHouse CreateEntrance(Transform root,Mesh box,Mesh sphere,Material trim,Material wood,Material shade,Material wall,Material brass)
+        static ParkHouse CreateLookout(string name,Transform parent,Vector3 position,Mesh box,Mesh sphere,
+            Material trim,Material wood,Material shade,Material wall,Material brass)
         {
-            // The entrance is grounded to the same floor as its landing and walk area.
-            var entry=Group("Kids cafe entrance",root,EntrancePosition);
+            var entry=Group(name,parent,position);
             var frame=new Pieces();
-            frame.Add(Arch(1.45f,1.90f,1.18f,.35f),trim,Vector3.zero,Vector3.one);
-            frame.Add(box,wall,new Vector3(-1.62f,1.55f,.99f),new Vector3(.40f,3.1f,2.03f));
-            frame.Add(box,wall,new Vector3(1.62f,1.55f,.99f),new Vector3(.40f,3.1f,2.03f));
-            frame.Add(box,shade,new Vector3(0,1.58f,1.94f),new Vector3(3.10f,3.15f,.23f));
+            frame.Add(Arch(1.27f,1.56f,1.05f,.28f),trim,Vector3.zero,Vector3.one);
+            frame.Add(box,wall,new Vector3(-1.20f,1.34f,.91f),new Vector3(.21f,2.68f,1.8f));
+            frame.Add(box,wall,new Vector3(1.20f,1.34f,.91f),new Vector3(.21f,2.68f,1.8f));
+            frame.Add(box,shade,new Vector3(0,1.36f,1.78f),new Vector3(2.42f,2.72f,.23f));
+            frame.Add(box,trim,new Vector3(0,2.76f,.85f),new Vector3(2.73f,.30f,2.37f));
+            frame.Add(ParkGeometry.Roof(),trim,new Vector3(0,2.82f,.85f),new Vector3(.56f,.54f,.55f));
+            frame.Add(sphere,brass,new Vector3(0,3.83f,.85f),Vector3.one*.37f);
             frame.Build(entry);
-            var hinge=Group("Door hinge",entry,new Vector3(-1.14f,0,-.10f));
+            var hinge=Group("Door hinge",entry,new Vector3(-1.03f,0,-.085f));
             var door=new Pieces();
-            door.Add(Arch(1.13f,1.84f,0,.15f),wood,new Vector3(1.14f,0,0),Vector3.one);
-            for(int i=0;i<5;i++)door.Add(box,wood,new Vector3(.24f+i*.44f,.96f,-.09f),new Vector3(.424f,1.92f,.09f));
-            door.Add(sphere,brass,new Vector3(1.91f,1.18f,-.185f),Vector3.one*.20f);
+            door.Add(Arch(1.025f,1.55f,0,.15f),wood,new Vector3(1.03f,0,0),Vector3.one);
+            for(int i=0;i<5;i++)
+                door.Add(box,wood,new Vector3(.205f+i*.412f,.79f,-.079f),new Vector3(.394f,1.60f,.067f));
+            door.Add(sphere,brass,new Vector3(1.79f,1.12f,-.15f),Vector3.one*.20f);
             door.Build(hinge);
             var house=entry.gameObject.AddComponent<ParkHouse>();
-            house.DisplayName="키즈카페 입구";
             house.DoorHinge=hinge;
-            house.OpenAngle=104;
-            house.Inside=Group("Inside",entry,new Vector3(0,0,1.43f));
-            house.Threshold=Group("Threshold",entry,new Vector3(0,0,-.44f));
-            house.Welcome=Group("Welcome",entry,new Vector3(0,0,-2.56f));
+            house.OpenAngle=-104;
+            house.Inside=Group("Inside",entry,new Vector3(0,0,1.11f));
+            house.Threshold=Group("Threshold",entry,Vector3.zero);
             return house;
+        }
+
+        static ParkHouse CreatePoleTower(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material blue,
+            Material wood,Material shade,Material wall,Material yellow,Material coral,Material mint)
+        {
+            const float deckHeight=5.20f,poleZ=-1.70f;
+            var tower=Group("Fire pole tower",root,PolePosition);
+            var flat=PrimitiveMesh(PrimitiveType.Cube);
+            var pieces=new Pieces();
+            pieces.Add(box,mint,new Vector3(0,.018f,-1.83f),new Vector3(2.94f,.036f,2.40f));
+            pieces.Add(flat,blue,new Vector3(0,deckHeight-.17f,.55f),new Vector3(3.01f,.34f,3.69f));
+            for(int side=-1;side<=1;side+=2)
+            {
+                foreach(float z in new[]{-.94f,1.92f})
+                {
+                    pieces.Add(box,blue,new Vector3(side*1.32f,deckHeight/2,z),new Vector3(.29f,deckHeight,.29f));
+                    pieces.Add(box,mint,new Vector3(side*1.32f,.22f,z),new Vector3(.46f,.44f,.46f));
+                }
+                pieces.Beam(cylinder,blue,new Vector3(side*1.32f,3.30f,1.92f),
+                    new Vector3(side*1.32f,deckHeight-.14f,-.94f),.19f);
+                pieces.Add(box,coral,new Vector3(side*1.32f,deckHeight+.44f,-.79f),new Vector3(.12f,.13f,.98f));
+                pieces.Add(box,blue,new Vector3(side*1.32f,deckHeight+.26f,-1.24f),new Vector3(.15f,.52f,.15f));
+                pieces.Beam(cylinder,blue,new Vector3(1.49f,0,1.92f+side*.43f),
+                    new Vector3(1.49f,deckHeight+.33f,1.62f+side*.43f),.14f);
+            }
+            for(int rung=1;rung<=12;rung++)
+            {
+                float y=rung*.41f;
+                float z=Mathf.Lerp(1.92f,1.62f,y/(deckHeight+.33f));
+                pieces.Beam(cylinder,rung%3==0?yellow:blue,new Vector3(1.49f,y,z-.43f),
+                    new Vector3(1.49f,y,z+.43f),.12f);
+            }
+
+            const float poleHeight=7.35f;
+            pieces.Beam(cylinder,blue,new Vector3(0,poleHeight,.04f),new Vector3(0,poleHeight,poleZ),.21f);
+            pieces.Beam(cylinder,coral,new Vector3(0,.02f,poleZ),new Vector3(0,poleHeight,poleZ),.16f);
+            pieces.Add(sphere,yellow,new Vector3(0,poleHeight,poleZ),Vector3.one*.29f);
+            pieces.Add(cylinder,yellow,new Vector3(0,.08f,poleZ),new Vector3(.32f,.08f,.32f));
+            pieces.Build(tower);
+
+            var gate=CreateLookout("Fire pole lookout",tower,new Vector3(0,deckHeight,-.26f),
+                box,sphere,blue,wood,shade,wall,yellow);
+            gate.DisplayName="봉 타워";
+            gate.EntrancePole=Group("Pole axis",tower,new Vector3(0,0,poleZ));
+            gate.Welcome=Group("Welcome",tower,new Vector3(-1.42f,0,-3.22f));
+            return gate;
         }
 
         static Mesh Arch(float outer,float spring,float inner,float depth)
@@ -159,113 +170,238 @@ namespace PeacePark.Editor
             return mesh;
         }
 
-        static void CreateBallPit(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,Material blue,Material yellow,Material white)
+        static void CreateRoundabout(Transform root,Mesh sphere,Mesh cylinder,Material mint,Material yellow)
         {
-            var pit=Group("Ball pit and slide",root,new Vector3(BallPit.x,0,BallPit.y));
+            var roundabout=Group("Roundabout",root,new Vector3(RoundaboutCenter.x,0,RoundaboutCenter.y));
+            var teal=Paint("Roundabout teal","#559A89");
+            ParkGeometry.Place("Fixed bearing",cylinder,roundabout,Vector3.up*.14f,
+                new Vector3(1.78f,.14f,1.78f),teal);
+
+            var platform=Group("Rotating platform",roundabout,Vector3.zero);
+            platform.gameObject.AddComponent<ParkRoundaboutSpin>();
             var pieces=new Pieces();
-            pieces.Add(cylinder,mint,new Vector3(0,.034f,0),new Vector3(8.70f,.028f,6.05f));
-            pieces.Add(cylinder,coral,new Vector3(0,.23f,0),new Vector3(8.1f,.19f,5.5f));
-            for(int i=0;i<36;i++)
+            float diameter=2*RoundaboutRadius;
+            pieces.Add(cylinder,teal,new Vector3(0,.29f,0),new Vector3(diameter-.12f,.13f,diameter-.12f));
+            pieces.Add(cylinder,mint,new Vector3(0,.43f,0),new Vector3(diameter,.10f,diameter));
+            pieces.Add(cylinder,teal,new Vector3(0,.54f,0),new Vector3(.66f,.025f,.66f));
+            for(int i=0;i<3;i++)
             {
-                float angle=i*2*Mathf.PI/36;
-                var tangent=new Vector3(-PitRadii.x*Mathf.Sin(angle),0,PitRadii.y*Mathf.Cos(angle));
-                pieces.Add(box,coral,new Vector3(PitRadii.x*Mathf.Cos(angle),.58f,PitRadii.y*Mathf.Sin(angle)),
-                    new Vector3(.73f,1.08f,tangent.magnitude*2*Mathf.PI/36+.08f),Quaternion.LookRotation(tangent));
+                var angle=Quaternion.Euler(0,20f+i*120f,0);
+                var left=angle*new Vector3(-.58f,.52f,1.88f);
+                var right=angle*new Vector3(.58f,.52f,1.88f);
+                var rail=Vector3.up*.92f;
+                const float tube=.19f;
+                pieces.Beam(cylinder,yellow,left,left+rail,tube);
+                pieces.Beam(cylinder,yellow,right,right+rail,tube);
+                pieces.Beam(cylinder,yellow,left+rail,right+rail,tube);
+                pieces.Add(sphere,yellow,left+rail,Vector3.one*tube);
+                pieces.Add(sphere,yellow,right+rail,Vector3.one*tube);
+                pieces.Add(cylinder,teal,left,new Vector3(.31f,.04f,.31f));
+                pieces.Add(cylinder,teal,right,new Vector3(.31f,.04f,.31f));
             }
-            var colors=new[]{yellow,blue,mint,white,Paint("Rose balls","#F6ABD0"),Paint("Lavender balls","#C5AAEF")};
-            var random=new System.Random(2418);
-            for(int i=0;i<127;i++)
-            {
-                float angle=i*2.399963f,r=Mathf.Sqrt((i+.4f)/127);
-                float diameter=.40f+(float)random.NextDouble()*.20f;
-                pieces.Add(sphere,colors[random.Next(colors.Length)],new Vector3(r*3.67f*Mathf.Cos(angle),.50f+(float)random.NextDouble()*.21f,
-                    r*2.37f*Mathf.Sin(angle)),Vector3.one*diameter);
-            }
-            pieces.Build(pit);
-            CreateSlide(pit,box,cylinder,blue,yellow);
+            pieces.Build(platform);
         }
 
-        const float SlideCenter=2.1f,SlideWidth=1.65f,SlideTop=2.03f,LandingHeight=2.35f;
-        const float LandingDepth=.92f,StepDepth=.53f;
-        const int StepCount=5;
+        const float SpiralRadius=2.55f,TowerHeight=6.1f,RunoutDepth=1.6f;
 
-        static void CreateSlide(Transform pit,Mesh box,Mesh cylinder,Material blue,Material yellow)
+        static ParkSlide CreateSlide(Transform venue,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material blue,
+            Material yellow,Material coral)
         {
-            var root=Group("Slide and stairs",pit,new Vector3(SlideCenter,0,0));
-            var rails=new Pieces();
-            var flatTread=PrimitiveMesh(PrimitiveType.Cube);
-            float stairStart=SlideTop+LandingDepth;
-            for(int step=0;step<StepCount;step++)
+            var root=Group("Spiral slide tower",venue,TowerPosition);
+            var slide=root.gameObject.AddComponent<ParkSlide>();
+            var structure=new Pieces();
+            structure.Add(cylinder,mint,new Vector3(0,2.995f,0),new Vector3(.94f,2.995f,.94f));
+            structure.Add(cylinder,blue,new Vector3(0,.12f,0),new Vector3(1.63f,.12f,1.63f));
+            for(int band=1;band<=5;band++)
+                structure.Add(cylinder,blue,new Vector3(0,band*1.15f,0),new Vector3(.99f,.075f,.99f));
+            var flat=PrimitiveMesh(PrimitiveType.Cube);
+            structure.Add(flat,mint,new Vector3(2.56f,TowerHeight-.125f,1.30f),new Vector3(2.53f,.25f,2.66f));
+            structure.Add(flat,mint,new Vector3(4.40f,TowerHeight-.125f,.18f),new Vector3(1.23f,.25f,.40f));
+            structure.Add(box,blue,new Vector3(SpiralRadius,.019f,-2.43f),new Vector3(2.50f,.038f,1.82f));
+            structure.Beam(cylinder,mint,new Vector3(0,5.67f,0),new Vector3(2.55f,5.84f,.88f),.15f);
+
+            // Carry the lookout deck from the ground outside the spiral and the stair treads.
+            var supports=Group("Lookout supports",root,Vector3.zero);
+            const float columnHeight=TowerHeight-.25f;
+            foreach(var foot in new[]{new Vector3(3.50f,0,1.98f),new Vector3(2.29f,0,3.34f)})
             {
-                float height=LandingHeight*(StepCount-step)/StepCount;
-                ParkGeometry.Place($"Stair {StepCount-step}",step==0?flatTread:box,root,
-                    new Vector3(0,height/2,stairStart+(step+.5f)*StepDepth),
-                    new Vector3(SlideWidth,height,step==0?StepDepth:StepDepth+.04f),blue);
+                var column=Group("Lookout column",supports,foot);
+                ParkGeometry.Place("Post",box,column,Vector3.up*(columnHeight/2),
+                    new Vector3(.30f,columnHeight,.30f),mint);
+                ParkGeometry.Place("Padded footing",box,column,Vector3.up*.19f,
+                    new Vector3(.44f,.38f,.44f),blue);
+                structure.Beam(cylinder,mint,foot+Vector3.up*(columnHeight-.08f),
+                    new Vector3(2.62f,columnHeight-.06f,1.68f),.21f);
             }
-            // The chute and landing share the same top surface and finish flush with the stair tread.
-            var profile=new List<Vector2>();
-            for(int i=0;i<=24;i++)
+
+            // Build the chute and centerline from the same points, including its straight floor-level end.
+            const int turns=112,braking=11;
+            var route=new Vector3[turns+braking+1];
+            for(int i=0;i<=turns;i++)
             {
-                float t=i/24f;
-                profile.Add(new Vector2(Mathf.Lerp(-.44f,SlideTop,t),Mathf.Lerp(.68f,LandingHeight,Mathf.SmoothStep(0,1,t))));
+                float t=i/(float)turns;
+                float angle=t*(-2*Mathf.PI);
+                float height=t-.105f*Mathf.Sin(2*Mathf.PI*t);
+                route[i]=new Vector3(SpiralRadius*Mathf.Cos(angle),Mathf.Lerp(TowerHeight,.37f,height),SpiralRadius*Mathf.Sin(angle));
             }
-            profile.Add(new Vector2(stairStart,LandingHeight));
+            for(int i=1;i<=braking;i++)
+            {
+                float t=i/(float)braking;
+                route[turns+i]=new Vector3(SpiralRadius,.37f*(1-t)*(1-t),-RunoutDepth*t);
+            }
+            slide.Chute=route;
+            slide.Runout=new[]{route[route.Length-1],new Vector3(SpiralRadius,0,-3.03f)};
+            ParkGeometry.Place("Golden spiral chute",ChuteMesh(route),root,Vector3.zero,Vector3.one,yellow);
+            for(int i=1;i<8;i++)
+            {
+                var point=route[turns*i/8];
+                var rim=new Vector3(point.x,0,point.z).normalized;
+                structure.Beam(cylinder,mint,new Vector3(0,Mathf.Max(.3f,point.y-.84f),0),
+                    point-rim*.22f-Vector3.up*.17f,.13f);
+            }
+            slide.Steps=BuildStairs(structure,flat,box,sphere,blue,mint,coral);
+            structure.Build(root);
+            return slide;
+        }
+
+        static Mesh ChuteMesh(Vector3[] route)
+        {
             var vertices=new List<Vector3>();
             var indices=new List<int>();
-            for(int i=0;i<profile.Count;i++)
+            var section=new[]{new Vector2(-1.12f,-.15f),new Vector2(-1.12f,.34f),new Vector2(-.98f,.39f),
+                new Vector2(-.88f,.04f),new Vector2(-.80f,0),new Vector2(.80f,0),new Vector2(.88f,.04f),
+                new Vector2(.98f,.39f),new Vector2(1.12f,.34f),new Vector2(1.12f,-.15f)};
+            for(int i=0;i<route.Length;i++)
             {
-                var point=profile[i];
-                float half=SlideWidth/2;
-                vertices.AddRange(new[]{new Vector3(-half,point.y,point.x),new Vector3(half,point.y,point.x),
-                    new Vector3(-half,point.y-.16f,point.x),new Vector3(half,point.y-.16f,point.x)});
-                if(i==0)continue;
-                int v=(i-1)*4;
-                foreach(int index in new[]{0,4,5,0,5,1,2,3,7,2,7,6,0,2,6,0,6,4,1,5,7,1,7,3})indices.Add(v+index);
-                for(int side=-1;side<=1;side+=2)
+                var heading=route[Mathf.Min(i+1,route.Length-1)]-route[Mathf.Max(i-1,0)];
+                var across=new Vector3(-heading.z,0,heading.x).normalized;
+                foreach(var p in section)
                 {
-                    var previous=profile[i-1];
-                    float x=side*(half-.035f);
-                    var from=new Vector3(x,previous.y+.16f,previous.x);
-                    var to=new Vector3(x,point.y+.16f,point.x);
-                    rails.Beam(cylinder,yellow,from,to,.17f);
+                    float height=p.y;
+                    if(height>0)height*=Mathf.Clamp01((route.Length-1-i)/10f);
+                    vertices.Add(route[i]+across*p.x+Vector3.up*height);
+                }
+                if(i==0)continue;
+                int previous=(i-1)*section.Length;
+                for(int j=0;j<section.Length;j++)
+                {
+                    int a=previous+j,b=previous+(j+1)%section.Length;
+                    int c=a+section.Length,d=b+section.Length;
+                    indices.AddRange(new[]{a,b,c,b,d,c});
                 }
             }
-            int end=vertices.Count-4;
-            indices.AddRange(new[]{0,1,3,0,3,2,end,end+2,end+3,end,end+3,end+1});
-            var chute=new Mesh{name="Continuous slide and landing"};
-            chute.SetVertices(vertices);
-            chute.SetTriangles(indices,0);
-            chute.RecalculateNormals();
-            chute.RecalculateBounds();
-            ParkGeometry.Place("Chute and landing",chute,root,Vector3.zero,Vector3.one,yellow);
-            rails.Build(root);
+            var mesh=new Mesh{name="Rounded spiral chute"};
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(indices,0);
+            mesh.RecalculateNormals();
+            return mesh;
         }
 
-        static void CreateTable(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material wood,Material cushion,Material mint,Material white)
+        static Vector3[] BuildStairs(Pieces pieces,Mesh tread,Mesh box,Mesh sphere,Material blue,Material mint,Material coral)
         {
-            var table=Group("Guardian table and chairs",root,TablePosition);
+            const float lowerX=5.82f, upperX=4.40f, stepWidth=1.23f, landingZ=3.47f, midHeight=3.38f;
+            float landingX=(lowerX+upperX)/2;
+            var route=new List<Vector3>{new Vector3(lowerX,0,-3.13f)};
+            Flight(lowerX,-2.39f,2.87f,0,midHeight,13);
+            pieces.Add(tread,blue,new Vector3(landingX,midHeight-.14f,3.16f),new Vector3(2.65f,.28f,.58f));
+            route.Add(new Vector3(lowerX,midHeight,3.16f));
+            route.Add(new Vector3(upperX,midHeight,3.16f));
+            Flight(upperX,2.87f,.38f,midHeight,TowerHeight,9);
+            route.Add(new Vector3(upperX,TowerHeight,.34f));
+            route.Add(new Vector3(SpiralRadius,TowerHeight,.34f));
+            route.Add(new Vector3(SpiralRadius,TowerHeight,0));
+
+            pieces.Add(box,mint,new Vector3(landingX,midHeight+.41f,landingZ),new Vector3(2.68f,.76f,.12f));
+            foreach(float x in new[]{upperX,lowerX})
+                pieces.Add(box,mint,new Vector3(x,midHeight*.5f,3.05f),new Vector3(.32f,midHeight,.33f));
+            return route.ToArray();
+
+            void Flight(float x,float fromZ,float toZ,float fromY,float toY,int count)
+            {
+                float depth=Mathf.Abs(toZ-fromZ)/count;
+                for(int step=0;step<count;step++)
+                {
+                    float end=(step+1)/(float)count;
+                    float height=Mathf.Lerp(fromY,toY,end);
+                    float z=Mathf.Lerp(fromZ,toZ,(step+.5f)/count);
+                    pieces.Add(tread,step%3==1?mint:blue,new Vector3(x,height-.115f,z),new Vector3(stepWidth,.23f,depth+.012f));
+                    route.Add(new Vector3(x,height,z));
+                    if(step%3!=0&&step!=count-1)continue;
+                    float side=x==lowerX?1:-1;
+                    var post=new Vector3(x+side*stepWidth/2,height,z);
+                    pieces.Add(box,mint,post+Vector3.up*.40f,new Vector3(.10f,.80f,.10f));
+                    pieces.Add(sphere,coral,post+Vector3.up*.84f,Vector3.one*.21f);
+                }
+            }
+        }
+
+        static void CreateTrampoline(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,Material blue)
+        {
+            var trampoline=Group("Trampoline",root,TrampolinePosition);
+            var mat=Paint("Trampoline navy mat","#3D5478");
+            var rope=Paint("Trampoline safety net","#628DAB");
             var pieces=new Pieces();
-            pieces.Add(cylinder,wood,new Vector3(0,1.26f,0),new Vector3(1.88f,.12f,1.88f));
-            pieces.Add(cylinder,wood,new Vector3(0,.65f,0),new Vector3(.33f,.63f,.33f));
-            pieces.Add(cylinder,wood,new Vector3(0,.11f,0),new Vector3(.91f,.09f,.91f));
+            pieces.Add(cylinder,blue,new Vector3(0,.53f,0),new Vector3(4.32f,.13f,4.32f));
+            pieces.Add(cylinder,coral,new Vector3(0,.67f,0),new Vector3(4.44f,.10f,4.44f));
+            pieces.Add(cylinder,mat,new Vector3(0,.77f,0),new Vector3(3.78f,.019f,3.78f));
+            pieces.Add(box,mint,new Vector3(0,.16f,-2.41f),new Vector3(1.14f,.32f,.66f));
+            pieces.Add(box,blue,new Vector3(0,.34f,-2.13f),new Vector3(1.14f,.37f,.57f));
+
+            const int bays=7,subdivisions=5;
+            const float opening=.27f;
+            for(int bay=0;bay<=bays;bay++)
+            {
+                float angle=Mathf.Lerp(opening,2*Mathf.PI-opening,bay/(float)bays);
+                var foot=RailPoint(angle,.12f);
+                pieces.Add(cylinder,blue,foot,new Vector3(.28f,.12f,.28f));
+                pieces.Beam(cylinder,mint,foot,RailPoint(angle,2.35f),.128f);
+                pieces.Add(sphere,coral,RailPoint(angle,2.35f),Vector3.one*.24f);
+            }
+
+            for(int i=0;i<bays*subdivisions;i++)
+            {
+                float a=Mathf.Lerp(opening,2*Mathf.PI-opening,i/(float)(bays*subdivisions));
+                float b=Mathf.Lerp(opening,2*Mathf.PI-opening,(i+1)/(float)(bays*subdivisions));
+                if(i%subdivisions!=0)pieces.Beam(cylinder,rope,RailPoint(a,.80f),RailPoint(a,2.30f),.015f);
+                for(int row=0;row<5;row++)
+                {
+                    float height=.86f+row*.35f;
+                    pieces.Beam(cylinder,rope,RailPoint(a,height),RailPoint(b,height),.017f);
+                }
+                pieces.Beam(cylinder,mint,RailPoint(a,2.30f),RailPoint(b,2.30f),.075f);
+            }
+            pieces.Build(trampoline);
+
+            static Vector3 RailPoint(float angle,float height)=>new Vector3(2.10f*Mathf.Sin(angle),height,-2.10f*Mathf.Cos(angle));
+        }
+
+        static void CreateSeesaw(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,
+            Material blue,Material yellow)
+        {
+            var seesaw=Group("Seesaw",root,SeesawPosition);
+            seesaw.localRotation=Quaternion.Euler(0,-12,0);
+            var basePieces=new Pieces();
+            basePieces.Add(box,mint,new Vector3(0,.12f,0),new Vector3(1.20f,.24f,1.14f));
+            basePieces.Add(box,blue,new Vector3(0,.57f,0),new Vector3(.53f,.91f,.62f));
+            basePieces.Add(cylinder,yellow,new Vector3(0,.92f,0),new Vector3(.43f,.43f,.43f),Quaternion.Euler(90,0,0));
+            basePieces.Build(seesaw);
+
+            var beam=Group("Seesaw plank",seesaw,new Vector3(0,.98f,0));
+            beam.localRotation=Quaternion.Euler(0,0,9);
+            var seats=new Pieces();
+            seats.Add(box,yellow,Vector3.zero,new Vector3(4.81f,.24f,.45f));
             for(int side=-1;side<=1;side+=2)
             {
-                float x=side*1.36f;
-                pieces.Add(box,cushion,new Vector3(x,.57f,.12f),new Vector3(.66f,.19f,.72f));
-                pieces.Add(box,wood,new Vector3(x+side*.29f,.90f,.12f),new Vector3(.12f,1.05f,.67f));
-                for(int offset=-1;offset<=1;offset+=2)
-                for(int z=-1;z<=1;z+=2)
-                    pieces.Add(box,wood,new Vector3(x+offset*.23f,.29f,.12f+z*.25f),new Vector3(.10f,.56f,.10f));
+                var seat=side<0?coral:mint;
+                seats.Add(box,seat,new Vector3(side*1.98f,.17f,0),new Vector3(.83f,.22f,.74f));
+                seats.Add(box,seat,new Vector3(side*2.23f,.34f,0),new Vector3(.24f,.42f,.73f));
+                var handle=new Vector3(side*1.41f,0,0);
+                seats.Beam(cylinder,blue,handle+Vector3.up*.11f,handle+Vector3.up*.59f,.10f);
+                seats.Beam(cylinder,blue,handle+new Vector3(0,.58f,-.26f),handle+new Vector3(0,.58f,.26f),.13f);
+                for(int grip=-1;grip<=1;grip+=2)
+                    seats.Add(sphere,seat,handle+new Vector3(0,.58f,grip*.26f),Vector3.one*.19f);
             }
-            pieces.Add(sphere,white,new Vector3(0,1.46f,0),new Vector3(.36f,.33f,.36f));
-            pieces.Beam(cylinder,mint,new Vector3(0,1.50f,0),new Vector3(0,1.95f,0),.065f);
-            for(int i=0;i<5;i++)
-            {
-                float angle=i*2*Mathf.PI/5;
-                pieces.Add(sphere,white,new Vector3(.15f*Mathf.Cos(angle),1.96f+.15f*Mathf.Sin(angle),0),Vector3.one*.19f);
-            }
-            pieces.Add(sphere,cushion,new Vector3(0,1.96f,-.05f),Vector3.one*.17f);
-            pieces.Build(table);
+            seats.Build(beam);
         }
     }
 }

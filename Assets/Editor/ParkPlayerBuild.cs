@@ -11,6 +11,23 @@ namespace PeacePark.Editor
     {
         public const string WindowsExecutable = "Builds/Windows/TenMinutesOfPeace.exe";
 
+        internal static BuildReport BuildWindows(string scene,BuildOptions options)
+        {
+            var target=NamedBuildTarget.Standalone;
+            const IconKind kind=IconKind.Application;
+            var original=PlayerSettings.GetIcons(target,kind);
+            var icon=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/AppIconWindows.png");
+            if(!icon)throw new FileNotFoundException("Windows app icon is missing.");
+            var icons=new Texture2D[PlayerSettings.GetIconSizes(target,kind).Length];
+            System.Array.Fill(icons,icon);
+            try
+            {
+                PlayerSettings.SetIcons(target,icons,kind);
+                return BuildPipeline.BuildPlayer(new[]{scene},WindowsExecutable,BuildTarget.StandaloneWindows64,options);
+            }
+            finally{PlayerSettings.SetIcons(target,original,kind);}
+        }
+
         public int callbackOrder=>0;
         public void OnProcessScene(Scene scene,BuildReport report)
         {
@@ -18,12 +35,15 @@ namespace PeacePark.Editor
             ParkGardenLayout.Apply(scene);
             int importedTrees=ParkNaturePack.Apply(scene);
             if(importedTrees>0)Debug.Log($"NATURE PACK: applied {importedTrees} tree prefabs.");
+            int importedFlowers=ParkFlowerPlanting.Apply(scene);
+            if(importedFlowers>0)Debug.Log($"PANDAZOLE FLOWERS: planted {importedFlowers} flowers in the park.");
             ParkRoofDecor.Apply(scene);
             ParkButterflySetup.Apply(scene);
             ParkVenuesSetup.Apply(scene);
             foreach(var root in scene.GetRootGameObjects())
             foreach(var house in root.GetComponentsInChildren<ParkHouse>(true))
-                house.transform.localScale*=1.1f;
+                if(!house.ExitTerrain&&!house.EntranceSlide&&!house.EntrancePole&&!house.SecondDoorHinge)
+                    house.transform.localScale*=1.1f;
             if(report==null)return;
             foreach(var root in scene.GetRootGameObjects())foreach(var renderer in root.GetComponentsInChildren<MeshRenderer>(true))
             {
@@ -31,10 +51,13 @@ namespace PeacePark.Editor
                 if(renderer.name=="Winding path")
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var house=renderer.GetComponentInParent<ParkHouse>();
-                if(house&&renderer.transform.IsChildOf(house.DoorHinge))
+                if(house&&(renderer==house.EntranceLightSpill||(house.DoorHinge&&renderer.transform.IsChildOf(house.DoorHinge))||
+                    (house.SecondDoorHinge&&renderer.transform.IsChildOf(house.SecondDoorHinge))||
+                    (house.EntranceBell&&renderer.transform.IsChildOf(house.EntranceBell))))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var fountain=renderer.GetComponentInParent<ParkFountain>();
-                if(renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
+                if(renderer.GetComponentInParent<ParkBeachWildlife>()||renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
+                    renderer.GetComponentInParent<ParkRoundaboutSpin>()||
                     (fountain&&fountain.IsMovingPart(renderer.transform)))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,StaticEditorFlags.BatchingStatic);

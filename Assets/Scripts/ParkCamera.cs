@@ -17,6 +17,7 @@ namespace PeacePark
         bool waitForTouchRelease, touchBlockedByUi;
         Vector3 initialFocus;
         float initialDistance, initialYaw, initialPitch;
+        float maxDistance=48,panX=15,panZ=12;
 
         void Awake()
         {
@@ -50,7 +51,7 @@ namespace PeacePark
             if ((Input.GetMouseButton(1) && !Input.GetMouseButtonDown(1)) ||
                 (Input.GetMouseButton(2) && !Input.GetMouseButtonDown(2)))
                 Pan(delta);
-            distance = Mathf.Clamp(distance * Mathf.Exp(-Input.mouseScrollDelta.y * .1f), 7, 48);
+            distance = Mathf.Clamp(distance * Mathf.Exp(-Input.mouseScrollDelta.y * .1f), 7, maxDistance);
             previous = mouse;
             if (Input.GetKeyDown(KeyCode.Home)) ResetView();
             else Apply();
@@ -64,8 +65,8 @@ namespace PeacePark
         {
             var heading=Quaternion.Euler(0,yaw,0);
             focus-=heading*new Vector3(delta.x,0,delta.y)*distance*.0013f;
-            focus.x=Mathf.Clamp(focus.x,-15,15);
-            focus.z=Mathf.Clamp(focus.z,-12,12);
+            focus.x=Mathf.Clamp(focus.x,-panX,panX);
+            focus.z=Mathf.Clamp(focus.z,-panZ,panZ);
         }
         void UpdateTouch()
         {
@@ -117,7 +118,7 @@ namespace PeacePark
         }
         internal void ApplyTwoFingerGesture(Vector2 centerDelta,float screenHeight,float previousSpan,float span)
         {
-            distance=DistanceFromPinch(distance,previousSpan,span);
+            distance=DistanceFromPinch(distance,previousSpan,span,maxDistance);
             if(centerDelta.sqrMagnitude>0)Pan(centerDelta*(900f/screenHeight));
         }
         static bool BelowToolbar(Vector2 position)
@@ -132,9 +133,9 @@ namespace PeacePark
             waitForTouchRelease=false;
             touchBlockedByUi=false;
         }
-        internal static float DistanceFromPinch(float current,float previousSpan,float span)
+        internal static float DistanceFromPinch(float current,float previousSpan,float span,float limit=48)
         {
-            return Mathf.Clamp(current*previousSpan/Mathf.Max(1,span),7,48);
+            return Mathf.Clamp(current*previousSpan/Mathf.Max(1,span),7,limit);
         }
         void Apply()
         {
@@ -152,6 +153,9 @@ namespace PeacePark
         internal void SetVenueView(ParkVenue venue)
         {
             initialFocus=venue.Focus;initialDistance=venue.Distance;initialYaw=venue.Yaw;initialPitch=venue.Pitch;
+            maxDistance=Mathf.Max(48,Mathf.Max(venue.MaxDistance,venue.Distance));
+            panX=Mathf.Max(15,venue.WalkArea.width*.46f);
+            panZ=Mathf.Max(12,venue.WalkArea.height*.46f);
             ResetView();
         }
         void OnGUI()

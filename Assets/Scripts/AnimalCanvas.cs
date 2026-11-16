@@ -299,10 +299,15 @@ namespace PeacePark
             }
             if(changed)Paint.Apply(false);
         }
-        public void Clear()
+        public void Clear()=>Fill(Color.white);
+        internal void Fill(Color32 color)
         {
             var pixels=Paint.GetRawTextureData<Color32>();
-            for(int i=0;i<pixels.Length;i++)pixels[i]=new Color32(255,255,255,initialAlpha[i]);
+            for(int i=0;i<pixels.Length;i++)
+            {
+                color.a=initialAlpha[i];
+                pixels[i]=color;
+            }
             Paint.Apply(false);
         }
         public void Dispose(){Object.DestroyImmediate(Paint);Object.DestroyImmediate(Outline);}

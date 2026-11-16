@@ -29,6 +29,8 @@ namespace PeacePark
         Vector3[] pathPoints;
         int[] pathTriangles;
         float lawnHeight;
+        float defaultFogEnd;
+        ParkDuneTerrain duneTerrain;
         Vector2 pondCenter,pondRadii;
         Rect[] walkObstacles;
         Transform animalRoot;
@@ -37,9 +39,10 @@ namespace PeacePark
         bool parkUsesMsaa;
         internal ParkToast Toast {get;private set;}
         GUIStyle title,button;
-        Texture2D settingsIcon;
+        Texture2D venueTriangle,settingsIcon;
         readonly DrawingSkin skin=new DrawingSkin();
         ParkLanPanel lan;
+        ParkMusic music;
         ParkWelcome welcome;
         ParkDialogs dialogs;
         enum View { ModeSelection, Park, Drawing }
@@ -66,8 +69,13 @@ namespace PeacePark
 
         void Start()
         {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            ApplyWindowsTitle();
+#endif
             if(!Drawing)Drawing=FindAnyObjectByType<DrawingPage>();
             if(!OrbitCamera)OrbitCamera=FindAnyObjectByType<ParkCamera>();
+            music=new ParkMusic(gameObject);
+            defaultFogEnd=RenderSettings.fogEndDistance;
             parkCamera=OrbitCamera?OrbitCamera.GetComponent<Camera>():Camera.main;
             if(parkCamera)
             {
@@ -85,7 +93,7 @@ namespace PeacePark
             }
             queues=NewQueues(Houses.Length);
             animalRoot=new GameObject("Painted friends").transform;
-            Drawing.ShowParkNavigation=true;Drawing.Applied+=OnApplied;Drawing.ParkRequested+=LeaveDrawing;
+            Drawing.Applied+=OnApplied;
             if(OrbitCamera)OrbitCamera.ShowControls=false;
             lan = new ParkLanPanel(this);
             var welcomeObject=new GameObject("Start Screen",typeof(RectTransform));
@@ -104,6 +112,30 @@ namespace PeacePark
             RabbitCharacter.ConfigurePaintShader(RabbitPaintShader);
             SetView(View.ModeSelection);
         }
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        // Unity removes filename punctuation from the standalone product name.
+        static void ApplyWindowsTitle()
+        {
+            using var process=System.Diagnostics.Process.GetCurrentProcess();
+            var window=System.IntPtr.Zero;
+            while((window=FindWindowExW(System.IntPtr.Zero,window,"UnityWndClass",null))!=System.IntPtr.Zero)
+            {
+                GetWindowThreadProcessId(window,out uint owner);
+                if(owner!=process.Id)continue;
+                SetWindowTextW(window,"유아용 게임: 십분의 평화");
+                return;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,ExactSpelling=true)]
+        static extern System.IntPtr FindWindowExW(System.IntPtr parent,System.IntPtr after,string className,string title);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(System.IntPtr window,out uint processId);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,ExactSpelling=true)]
+        static extern bool SetWindowTextW(System.IntPtr window,string title);
+#endif
         void ReadPath(MeshFilter path)
         {
             pathPoints=null;pathTriangles=null;
@@ -115,14 +147,19 @@ namespace PeacePark
         void ApplyVenue(ParkVenue venue)
         {
             themeName=venue.Name;Houses=venue.Houses;Fountain=venue.Fountain;
+            Slide=venue.Slide;
             WalkArea=venue.WalkArea;lawnHeight=venue.LawnHeight;
+            duneTerrain=venue.DuneTerrain;
             pondCenter=venue.PondCenter;pondRadii=venue.PondRadii;
             walkObstacles=venue.WalkObstacles;
             ReadPath(venue.Path);
             if(OrbitCamera)OrbitCamera.SetVenueView(venue);
             if(parkCamera)parkCamera.backgroundColor=venue.Sky;
             RenderSettings.fogColor=venue.Sky;
+            RenderSettings.fogEndDistance=venue.FogEnd>0?venue.FogEnd:defaultFogEnd;
+            if(IsViewingPark)music.PlayVenue(themeName);
         }
+        internal ParkSlide Slide {get;private set;}
         internal void OpenVenuePicker()
         {
             if(CanChooseVenue)SetDialog(Dialog.Venues);
@@ -180,6 +217,7 @@ namespace PeacePark
         }
         public float SurfaceHeight(Vector3 position)
         {
+            if(duneTerrain)return duneTerrain.SurfaceHeight(position);
             if(pathPoints!=null)for(int i=0;i<pathTriangles.Length;i+=3)
             {
                 var a=pathPoints[pathTriangles[i]];var b=pathPoints[pathTriangles[i+1]];var c=pathPoints[pathTriangles[i+2]];
@@ -240,6 +278,13 @@ namespace PeacePark
         {
             if(IsViewingPark)SetDialog(Dialog.Settings);
         }
+        internal float MusicVolume=>music.Volume;
+        internal void SetMusicVolume(float volume)
+        {
+            bool wasSilent=music.Volume==0f;
+            music.SetVolume(volume);
+            if(IsViewingPark&&wasSilent&&music.Volume>0f)music.PlayVenue(themeName,fadeIn:false);
+        }
         internal void CloseDialog()
         {
             if(IsConnecting)lan.CancelJoin();
@@ -247,6 +292,7 @@ namespace PeacePark
         }
         void SetDialog(Dialog next)
         {
+            if(IsSettingsOpen&&next!=Dialog.Settings)music.SaveVolume();
             dialog=next;
             welcome.SetModalOpen(IsConnecting);
             dialogs.Show(IsConnecting,IsSettingsOpen,IsVenuePickerOpen);
@@ -266,6 +312,8 @@ namespace PeacePark
             Drawing.Visible=next==View.Drawing;
             Toast.UseDrawingLayer(Drawing.Visible);
             bool showPark=next==View.Park;
+            if(showPark)music.PlayVenue(themeName);
+            else music.FadeOut();
             if(!parkCamera)return;
             parkCamera.cullingMask=showPark?parkLayers:0;
             parkCamera.allowMSAA=showPark&&parkUsesMsaa;
@@ -302,12 +350,22 @@ namespace PeacePark
         void Update()
         {
             lan?.Update();
+            music?.Advance(Time.unscaledDeltaTime);
             if(Input.GetKeyDown(KeyCode.Escape))
             {
                 if(IsDrawing)LeaveDrawing();
                 else if(dialog!=Dialog.None)CloseDialog();
             }
             if(!ManualSimulation&&(IsViewingPark||(IsDrawing&&!lan.IsJoined)))Advance(Time.deltaTime);
+        }
+        void OnEnable()
+        {
+            if(IsViewingPark)music?.PlayVenue(themeName);
+        }
+        void OnDisable()=>music?.Stop();
+        void OnApplicationPause(bool paused)
+        {
+            if(paused&&IsSettingsOpen)music.SaveVolume();
         }
         public void Advance(float seconds)
         {
@@ -353,7 +411,7 @@ namespace PeacePark
         {
             if(!fadingAnimal)return;
             fadeRemaining=Mathf.Max(0,fadeRemaining-deltaTime);
-            fadingAnimal.Character.SetVisibility(fadeRemaining/AnimalFadeDuration);
+            fadingAnimal.SetVisibility(fadeRemaining/AnimalFadeDuration);
             if(fadeRemaining>0)return;
             animals.Remove(fadingAnimal);
             fadingAnimal.gameObject.SetActive(false);
@@ -365,6 +423,7 @@ namespace PeacePark
             if(title!=null)return;
             title=new GUIStyle(GUI.skin.label){font=ParkFonts.Bold,fontSize=24,alignment=TextAnchor.MiddleCenter,fontStyle=FontStyle.Normal};title.normal.textColor=new Color32(80,62,47,255);
             button=new GUIStyle(title){fontSize=25};button.normal.textColor=Color.white;
+            venueTriangle=CreateVenueTriangle(title.normal.textColor);
             settingsIcon=CreateSettingsIcon();
         }
         void OnGUI()
@@ -376,19 +435,13 @@ namespace PeacePark
             float scale=Mathf.Min(area.height/900f,area.width/665f),width=area.width/scale;
             GUI.matrix=old*Matrix4x4.TRS(new Vector3(area.xMin,Screen.height-area.yMax),Quaternion.identity,new Vector3(scale,scale,1));
             Styles();
-            const float themeWidth=125;
+            float themeWidth=Mathf.Max(125,title.CalcSize(new GUIContent(ThemeName)).x+42);
             var place=new Rect(8,18,themeWidth,60);
             if(CanChooseVenue)
             {
                 if(HudButton(place,ThemeName+"   "))OpenVenuePicker();
                 if(Event.current.type==EventType.Repaint)
-                {
-                    var tint=GUI.color;
-                    GUI.color=title.normal.textColor;
-                    for(int row=0;row<6;row++)
-                        GUI.DrawTexture(new Rect(place.xMax-29+row,place.y+28+row,11-2*row,1),Texture2D.whiteTexture);
-                    GUI.color=tint;
-                }
+                    GUI.DrawTexture(new Rect(place.xMax-30,place.center.y-5,14,10),venueTriangle);
             }
             else GUI.Label(place,ThemeName,title);
             if(HudButton(new Rect(width-487,18,158,60),"카메라 초기화")&&OrbitCamera)OrbitCamera.ResetView();
@@ -404,6 +457,24 @@ namespace PeacePark
             skin.Draw(rect,accent?new Color32(104,193,66,255):new Color32(255,247,226,255),27,accent);
             GUI.Label(rect,text,accent?button:title);
             return GUI.Button(rect,GUIContent.none,GUIStyle.none);
+        }
+        static Texture2D CreateVenueTriangle(Color32 color)
+        {
+            const int width=32,height=24;
+            var texture=new Texture2D(width,height,TextureFormat.RGBA32,false)
+                {name="Venue dropdown triangle",wrapMode=TextureWrapMode.Clamp,filterMode=FilterMode.Bilinear};
+            var pixels=new Color32[width*height];
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++)
+            {
+                float row=y+.5f;
+                float halfWidth=(row-2)*.7f;
+                float edge=Mathf.Min(22-row,halfWidth-Mathf.Abs(x+.5f-width*.5f));
+                color.a=(byte)Mathf.RoundToInt(255*Mathf.Clamp01(edge+.5f));
+                pixels[y*width+x]=color;
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false,true);
+            return texture;
         }
         static Texture2D CreateSettingsIcon()
         {
@@ -428,7 +499,8 @@ namespace PeacePark
         void OnDestroy()
         {
             lan?.Dispose();
-            if(Drawing){Drawing.Applied-=OnApplied;Drawing.ParkRequested-=LeaveDrawing;}
+            if(Drawing)Drawing.Applied-=OnApplied;
+            if(venueTriangle)Destroy(venueTriangle);
             if(settingsIcon)Destroy(settingsIcon);
             skin.Dispose();
         }

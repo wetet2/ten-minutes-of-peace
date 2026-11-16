@@ -7,13 +7,14 @@ namespace PeacePark
 {
     internal sealed class ParkDialogs : MonoBehaviour
     {
-        const float CardWidth = 520, ConnectionHeight = 386, SettingsHeight = 386;
+        const float CardWidth = 520, ConnectionHeight = 386, SettingsHeight = 432;
         static readonly Color Cream = new Color32(255, 249, 229, 255);
         static readonly Color Green = new Color32(187, 227, 140, 255);
         static readonly Color Neutral = new Color32(246, 232, 196, 255);
         ParkPlayground park;
         RectTransform connection, settings, venues;
-        Text addressSummary;
+        Text addressSummary, volumePercent;
+        Slider musicVolume;
         Image[] venueCards;
         InputField address;
         Button connect, discover;
@@ -65,8 +66,16 @@ namespace PeacePark
                 : "왼쪽 드래그  시점 회전   ·   오른쪽 드래그  화면 이동\n마우스 휠  확대·축소\n카메라 초기화 또는 Home  처음 시점";
             Caption(settings, cameraHelp,
                 19, new Rect(36, 232, 448, 65), false, TextAnchor.MiddleLeft);
-            Action(settings, "시작 화면으로", new Rect(32, 323, 220, 46), Neutral).onClick.AddListener(park.ReturnToModeSelection);
-            Action(settings, "닫기", new Rect(268, 323, 220, 46), Green).onClick.AddListener(park.CloseDialog);
+            Caption(settings, "음악 볼륨", 21, new Rect(36, 306, 112, 48), true, TextAnchor.MiddleLeft);
+            volumePercent = Caption(settings, "", 19, new Rect(438, 306, 46, 48), false, TextAnchor.MiddleRight);
+            musicVolume = CreateVolumeSlider(settings);
+            musicVolume.onValueChanged.AddListener(percent =>
+            {
+                park.SetMusicVolume(percent / 100f);
+                volumePercent.text = $"{percent:0}%";
+            });
+            Action(settings, "시작 화면으로", new Rect(32, 369, 220, 46), Neutral).onClick.AddListener(park.ReturnToModeSelection);
+            Action(settings, "닫기", new Rect(268, 369, 220, 46), Green).onClick.AddListener(park.CloseDialog);
 
             venues = Card("Venue Picker", root);
             Caption(venues, "놀이 장소 고르기", 34, new Rect(28, 17, 464, 53), true);
@@ -104,8 +113,12 @@ namespace PeacePark
             gameObject.SetActive(showConnection || showSettings || showVenues);
             if (showConnection) RefreshConnection();
             if (showSettings)
+            {
                 addressSummary.text = park.Lan.HostAddresses ??
                     "다른 기기를 연결하려면 시작 화면에서 놀이 공간을 열어 주세요.";
+                musicVolume.SetValueWithoutNotify(park.MusicVolume * 100f);
+                volumePercent.text = $"{musicVolume.value:0}%";
+            }
             if (showVenues)
                 for (int i = 0; i < venueCards.Length; i++)
                     venueCards[i].color = i == park.VenueIndex ? Green : Neutral;
@@ -121,6 +134,32 @@ namespace PeacePark
         void RefreshConnection()
         {
             address.interactable = connect.interactable = discover.interactable = !park.Lan.IsJoining;
+        }
+
+        Slider CreateVolumeSlider(RectTransform parent)
+        {
+            var area = Surface("음악 볼륨 슬라이더", parent, new Rect(150, 306, 282, 48), Color.clear);
+            var rail = Surface("Volume Track", area.rectTransform, new Rect(14, 16, 254, 16), Neutral);
+            rail.raycastTarget = false;
+            var fill = Surface("Volume Fill", rail.rectTransform, Rect.zero, Green);
+            fill.raycastTarget = false;
+            fill.rectTransform.anchorMin = Vector2.zero;
+            fill.rectTransform.anchorMax = Vector2.one;
+            fill.rectTransform.offsetMin = fill.rectTransform.offsetMax = Vector2.zero;
+
+            var handleArea = Child("Volume Handle Area", area.rectTransform);
+            Place(handleArea, new Rect(14, 10, 254, 28));
+            var handle = Surface("Volume Handle", handleArea, Rect.zero, new Color32(119, 167, 75, 255));
+            handle.rectTransform.pivot = new Vector2(.5f, .5f);
+            handle.rectTransform.sizeDelta = new Vector2(28, 0);
+
+            var slider = area.gameObject.AddComponent<Slider>();
+            slider.targetGraphic = handle;
+            slider.fillRect = fill.rectTransform;
+            slider.handleRect = handle.rectTransform;
+            slider.maxValue = 100;
+            slider.wholeNumbers = true;
+            return slider;
         }
 
         void RefreshLayout()

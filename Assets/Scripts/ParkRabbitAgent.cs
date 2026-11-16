@@ -20,7 +20,17 @@ namespace PeacePark
         float elapsed,phase,pause,blocked,wanderSpeed;
         Vector3 destination;
         bool leavingEntrance;
-        const float ExitDuration=3.75f,WaveDuration=1.65f;
+        internal enum Activity { None, Hop, Dance, ApproachSlide, Climb, Sit, Slide, LeaveSlide }
+        internal Activity CurrentActivity {get;private set;}
+        ParkSlide slide;
+        internal bool UseContactShadow {get;set;}
+        MeshRenderer contactShadow;
+        MaterialPropertyBlock shadowProperties;
+        static Material contactShadowMaterial;
+        static Mesh contactShadowMesh;
+        static readonly int ShadowOpacity=Shader.PropertyToID("_Opacity");
+        float activityTime,activityDelay;
+        const float WaveDuration=1.65f;
         const float WanderSpeed=.65f;
         internal const float AnimalSpacing=.82f;
         static readonly float[] DepartureAngles={-84,-56,-28,0,28,56,84};
@@ -37,6 +47,85 @@ namespace PeacePark
             transform.SetPositionAndRotation(house.Inside.position,house.Facing);
             transform.localScale=Vector3.one*(previousScale*SizeMultiplier);
             Character.PlayIdlePose();Character.Skin.enabled=false;State=ParkRabbitState.OpeningDoor;
+            activityDelay=Range(8,17);
+            UseContactShadow=Application.platform==RuntimePlatform.Android;
+        }
+
+        void CreateContactShadow()
+        {
+            if(!contactShadowMaterial)
+            {
+                var shader=Resources.Load<Shader>("AnimalContactShadow");
+                if(!shader||!shader.isSupported)return;
+                contactShadowMaterial=new Material(shader);
+            }
+            if(!contactShadowMesh)
+            {
+                contactShadowMesh=new Mesh{name="Animal contact shadow quad"};
+                contactShadowMesh.vertices=new[]{new Vector3(-.5f,-.5f),new Vector3(-.5f,.5f),
+                    new Vector3(.5f,.5f),new Vector3(.5f,-.5f)};
+                contactShadowMesh.uv=new[]{Vector2.zero,Vector2.up,Vector2.one,Vector2.right};
+                contactShadowMesh.triangles=new[]{0,1,2,0,2,3};
+            }
+            var shadow=new GameObject("Animal contact shadow"){layer=gameObject.layer};
+            try
+            {
+                shadow.transform.SetParent(transform,false);
+                shadow.transform.localScale=new Vector3(3.05f,2.25f,1);
+                shadow.AddComponent<MeshFilter>().sharedMesh=contactShadowMesh;
+                var renderer=shadow.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial=contactShadowMaterial;
+                renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows=false;
+                Character.Skin.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+                contactShadow=renderer;
+            }
+            catch
+            {
+                Destroy(shadow);
+                throw;
+            }
+        }
+
+        void LateUpdate()
+        {
+            // Shadow setup is optional and runs after the animal has started its entrance.
+            if(UseContactShadow&&Character&&Character.Skin.enabled)
+            {
+                UseContactShadow=false;
+                try{CreateContactShadow();}
+                catch(System.Exception error){Debug.LogWarning($"Could not create contact shadow for animal {Id}: {error}");}
+            }
+            if(contactShadow)UpdateContactShadow();
+        }
+
+        void UpdateContactShadow()
+        {
+            contactShadow.enabled=Character.Skin.enabled&&CurrentActivity<Activity.Climb&&
+                !(State==ParkRabbitState.WalkingOut&&
+                    ((house.EntranceSlide&&elapsed<house.ExitDuration-ParkSlide.ExitWalkSeconds)||
+                    (house.EntrancePole&&transform.position.y>house.EntrancePole.position.y+.02f)));
+            if(!contactShadow.enabled)return;
+            contactShadow.transform.SetPositionAndRotation(transform.position+Vector3.up*.012f,
+                Quaternion.Euler(90,transform.eulerAngles.y,0));
+        }
+
+        internal void SetVisibility(float visibility)
+        {
+            Character.SetVisibility(visibility);
+            if(!contactShadow)return;
+            shadowProperties??=new MaterialPropertyBlock();
+            shadowProperties.SetFloat(ShadowOpacity,visibility);
+            contactShadow.SetPropertyBlock(shadowProperties);
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ClearContactShadowResources()
+        {
+            if(contactShadowMaterial)Destroy(contactShadowMaterial);
+            if(contactShadowMesh)Destroy(contactShadowMesh);
+            contactShadowMaterial=null;
+            contactShadowMesh=null;
         }
         public void Advance(float deltaTime)
         {
@@ -49,10 +138,11 @@ namespace PeacePark
             if(State==ParkRabbitState.WalkingOut)
             {
                 ExitedThroughOpenDoor&=house.DoorFraction>=.999f;
-                var previous=transform.position;transform.position=house.ExitPosition(elapsed/ExitDuration);
-                float distance=Vector3.Distance(previous,transform.position);phase+=distance*12;WalkedDistance+=distance;
-                Character.PlayWalkingPose(phase);
-                if(elapsed>=ExitDuration)
+                if(house.BushEntrance)AdvanceBushEntrance();
+                else if(house.EntranceSlide)AdvanceSlideEntrance();
+                else if(house.EntrancePole)AdvancePoleEntrance();
+                else WalkTo(house.ExitPosition(elapsed/house.ExitDuration));
+                if(elapsed>=house.ExitDuration)
                 {var p=transform.position;p.y=park.SurfaceHeight(p);transform.position=p;State=ParkRabbitState.Waving;elapsed=0;WaveCount++;house.CloseAfterExit();}
             }
             else if(State==ParkRabbitState.Waving)
@@ -66,8 +156,131 @@ namespace PeacePark
                 leavingEntrance=true;
                 ChooseDeparture();
             }
-            else if(State==ParkRabbitState.Wandering)Wander(deltaTime);
+            else if(State==ParkRabbitState.Wandering)
+            {
+                if(!AdvanceActivity(deltaTime))Wander(deltaTime);
+            }
         }
+        void AdvanceBushEntrance()
+        {
+            transform.rotation=house.Facing;
+            if(elapsed<ParkHouse.BushPeekSeconds)
+            {
+                float peek=Mathf.SmoothStep(0,1,elapsed/ParkHouse.BushPeekSeconds);
+                transform.position=Vector3.Lerp(house.Inside.position,house.Threshold.position,peek);
+                Character.PlayPeekPose(0);
+                return;
+            }
+            float lookTime=elapsed-ParkHouse.BushPeekSeconds;
+            if(lookTime<ParkHouse.BushLookSeconds)
+            {
+                float progress=lookTime/ParkHouse.BushLookSeconds;
+                float yaw=progress<.3f?Mathf.Lerp(0,-38,Mathf.SmoothStep(0,1,progress/.3f)):
+                    progress<.7f?Mathf.Lerp(-38,38,Mathf.SmoothStep(0,1,(progress-.3f)/.4f)):
+                    Mathf.Lerp(38,0,Mathf.SmoothStep(0,1,(progress-.7f)/.3f));
+                transform.position=house.Threshold.position;
+                Character.PlayPeekPose(yaw);
+                return;
+            }
+            float walkTime=lookTime-ParkHouse.BushLookSeconds;
+            WalkTo(Vector3.Lerp(house.Threshold.position,house.Welcome.position,walkTime/ParkHouse.BushWalkSeconds));
+            Character.ApplyBushLean(1-Mathf.SmoothStep(0,1,walkTime/.5f));
+        }
+        void AdvanceSlideEntrance()
+        {
+            var entranceSlide=house.EntranceSlide;
+            float rideTime=elapsed-ParkSlide.EntrySeconds;
+            if(rideTime<0)
+            {
+                entranceSlide.SlideDown(0,out var lip,out _);
+                float entry=Mathf.Clamp01(elapsed/ParkSlide.EntrySeconds);
+                var position=Vector3.Lerp(house.Inside.position,lip,entry);
+                if(entry<.70f)WalkTo(position);
+                else
+                {
+                    transform.position=position;
+                    Character.PlaySlidePose(Mathf.SmoothStep(0,1,Mathf.InverseLerp(.70f,1,entry)));
+                }
+            }
+            else if(rideTime<ParkSlide.DescentSeconds)Ride(entranceSlide,rideTime/ParkSlide.DescentSeconds);
+            else
+            {
+                float standTime=rideTime-ParkSlide.DescentSeconds;
+                if(standTime<ParkSlide.StandSeconds)
+                {
+                    Ride(entranceSlide,1);
+                    Character.PlaySlidePose(1-Mathf.SmoothStep(0,1,standTime/ParkSlide.StandSeconds));
+                }
+                else WalkTo(entranceSlide.WalkOut((standTime-ParkSlide.StandSeconds)/ParkSlide.ExitWalkSeconds));
+            }
+        }
+
+        void AdvancePoleEntrance()
+        {
+            var pole=house.EntrancePole.position;
+            var feetAtBase=pole+house.transform.forward*.42f;
+            var feetAtTop=feetAtBase;
+            feetAtTop.y=house.Threshold.position.y;
+            float rideTime=elapsed-ParkHouse.PoleEntrySeconds;
+            if(rideTime<0)
+            {
+                float approach=Mathf.Clamp01(elapsed/ParkHouse.PoleEntrySeconds);
+                var point=Vector3.Lerp(house.Inside.position,feetAtTop,approach);
+                transform.rotation=house.Facing;
+                if(approach<.66f)WalkTo(point);
+                else
+                {
+                    transform.position=point;
+                    Character.PlayPolePose(pole,Mathf.SmoothStep(0,1,Mathf.InverseLerp(.66f,1,approach)));
+                }
+                return;
+            }
+            if(rideTime<ParkHouse.PoleDescentSeconds)
+            {
+                float t=rideTime/ParkHouse.PoleDescentSeconds;
+                float descent=t-.115f*Mathf.Sin(2*Mathf.PI*t);
+                var turn=Quaternion.AngleAxis(Mathf.SmoothStep(0,360,t),Vector3.up);
+                var position=pole+turn*(feetAtBase-pole);
+                position.y=Mathf.Lerp(feetAtTop.y,feetAtBase.y,descent);
+                transform.SetPositionAndRotation(position,turn*house.Facing);
+                Character.PlayPolePose(pole,1);
+                return;
+            }
+
+            // Step around the pole while letting go, then walk out to the greeting spot.
+            float releaseTime=rideTime-ParkHouse.PoleDescentSeconds;
+            var stepAside=feetAtBase-house.transform.right*.51f;
+            var direction=house.Welcome.position-stepAside;
+            direction.y=0;
+            var facing=Quaternion.LookRotation(-direction);
+            if(releaseTime<ParkHouse.PoleReleaseSeconds)
+            {
+                float release=Mathf.SmoothStep(0,1,releaseTime/ParkHouse.PoleReleaseSeconds);
+                transform.SetPositionAndRotation(Vector3.Lerp(feetAtBase,stepAside,release),
+                    Quaternion.Slerp(house.Facing,facing,release));
+                Character.PlayPolePose(pole,1-release);
+                return;
+            }
+            transform.rotation=facing;
+            WalkTo(Vector3.Lerp(stepAside,house.Welcome.position,(releaseTime-ParkHouse.PoleReleaseSeconds)/ParkHouse.PoleWalkSeconds));
+        }
+
+        void Ride(ParkSlide course,float progress)
+        {
+            course.SlideDown(progress,out var position,out var rotation);
+            transform.SetPositionAndRotation(position,rotation);
+            Character.PlaySlidePose(1);
+        }
+
+        void WalkTo(Vector3 position)
+        {
+            float distance=Vector3.Distance(transform.position,position);
+            transform.position=position;
+            phase+=distance*12;
+            WalkedDistance+=distance;
+            Character.PlayWalkingPose(phase);
+        }
+
         float Range(float min,float max)=>Mathf.Lerp(min,max,(float)random.NextDouble());
         internal bool IsEmerging=>State==ParkRabbitState.OpeningDoor||State==ParkRabbitState.WalkingOut;
 
@@ -84,6 +297,10 @@ namespace PeacePark
 
         internal void ChangeVenue(ParkHouse entrance,int index)
         {
+            if(CurrentActivity!=Activity.None)FinishActivity();
+            float exitProgress=elapsed/house.ExitDuration;
+            bool changedEntranceType=(bool)house.EntranceSlide!=(bool)entrance.EntranceSlide||
+                (bool)house.EntrancePole!=(bool)entrance.EntrancePole||house.BushEntrance!=entrance.BushEntrance;
             house=entrance;HouseIndex=index;
             switch(State)
             {
@@ -91,7 +308,16 @@ namespace PeacePark
                     transform.SetPositionAndRotation(house.Inside.position,house.Facing);
                     break;
                 case ParkRabbitState.WalkingOut:
-                    transform.SetPositionAndRotation(house.ExitPosition(elapsed/ExitDuration),house.Facing);
+                    if(changedEntranceType)
+                    {
+                        RestartEmergence(entrance,index);
+                        break;
+                    }
+                    elapsed=exitProgress*house.ExitDuration;
+                    if(house.BushEntrance)AdvanceBushEntrance();
+                    else if(house.EntranceSlide)AdvanceSlideEntrance();
+                    else if(house.EntrancePole)AdvancePoleEntrance();
+                    else transform.SetPositionAndRotation(house.ExitPosition(exitProgress),house.Facing);
                     break;
                 case ParkRabbitState.Waving:
                     transform.SetPositionAndRotation(house.Welcome.position,house.Facing);
@@ -107,6 +333,110 @@ namespace PeacePark
                     ChooseDestination();
                     break;
             }
+        }
+
+        // The first walk starts normally. Optional activities are scheduled later during roaming.
+        bool AdvanceActivity(float dt)
+        {
+            var position=transform.position;
+            if((CurrentActivity==Activity.Hop||CurrentActivity==Activity.Dance)&&OverlapAt(position)>0)
+            {
+                FinishActivity();
+                return false;
+            }
+            if(CurrentActivity==Activity.None)
+            {
+                if(leavingEntrance)return false;
+                activityDelay-=dt;
+                if(activityDelay>0||!park.IsClear(position,this,1.2f))return false;
+                activityDelay=Range(4,7);
+                var candidate=park.Slide;
+                if(candidate&&Vector3.Distance(position,candidate.Approach)<6&&TryStartSlide())return false;
+                StartActivity(random.Next(2)==0?Activity.Hop:Activity.Dance);
+            }
+
+            activityTime+=dt;
+            switch(CurrentActivity)
+            {
+                case Activity.Hop:
+                    Character.PlayHopPose(Mathf.Clamp01(activityTime/.9f));
+                    if(activityTime>=.9f)FinishActivity();
+                    return true;
+                case Activity.Dance:
+                    Character.PlayDancePose(Mathf.Clamp01(activityTime/2.15f));
+                    if(activityTime>=2.15f)FinishActivity();
+                    return true;
+                case Activity.ApproachSlide:
+                    if(activityTime>13||!slide.isActiveAndEnabled){FinishActivity();return false;}
+                    if(Vector3.Distance(transform.position,slide.Approach)>.07f)return false;
+                    StartActivity(Activity.Climb);
+                    return true;
+                case Activity.Climb:
+                    const float climbSeconds=7.0f;
+                    Vector3 next=slide.Climb(activityTime/climbSeconds);
+                    Vector3 heading=next-transform.position;heading.y=0;
+                    if(heading.sqrMagnitude>.000001f)
+                        transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(-heading),dt*420);
+                    WalkTo(next);
+                    if(activityTime>=climbSeconds)StartActivity(Activity.Sit);
+                    return true;
+                case Activity.Sit:
+                    slide.SlideDown(0,out _,out var facing);
+                    transform.rotation=Quaternion.RotateTowards(transform.rotation,facing,dt*520);
+                    Character.PlaySlidePose(Mathf.SmoothStep(0,1,activityTime/.4f));
+                    if(activityTime>=.4f)StartActivity(Activity.Slide);
+                    return true;
+                case Activity.Slide:
+                    Ride(slide,activityTime/ParkSlide.DescentSeconds);
+                    if(activityTime>=ParkSlide.DescentSeconds)StartActivity(Activity.LeaveSlide);
+                    return true;
+                case Activity.LeaveSlide:
+                    if(activityTime<=ParkSlide.StandSeconds)
+                    {
+                        Character.PlaySlidePose(1-Mathf.SmoothStep(0,1,activityTime/ParkSlide.StandSeconds));
+                        return true;
+                    }
+                    float walk=(activityTime-ParkSlide.StandSeconds)/ParkSlide.ExitWalkSeconds;
+                    WalkTo(slide.WalkOut(walk));
+                    if(walk>=1)FinishActivity();
+                    return true;
+                default:return false;
+            }
+        }
+
+        internal bool TryStartSlide()
+        {
+            var candidate=park.Slide;
+            if(State!=ParkRabbitState.Wandering||CurrentActivity!=Activity.None||!candidate||
+                !PathIsClear(candidate.Approach)||!park.IsClear(candidate.Exit,this,AnimalSpacing)||!candidate.Reserve(this))return false;
+            slide=candidate;
+            destination=slide.Approach;
+            leavingEntrance=false;
+            StartActivity(Activity.ApproachSlide);
+            return true;
+        }
+
+        internal void StartActivity(Activity activity)
+        {
+            CurrentActivity=activity;
+            activityTime=0;
+            pause=0;
+            wanderSpeed=0;
+        }
+
+        void FinishActivity()
+        {
+            if(slide)slide.Release(this);
+            slide=null;
+            CurrentActivity=Activity.None;
+            activityDelay=Range(9,21);
+            Character.PlayIdlePose();
+            ChooseDestination();
+        }
+
+        void OnDisable()
+        {
+            if(slide)slide.Release(this);
         }
         void GroundAtCurrentPosition()
         {
@@ -170,7 +500,7 @@ namespace PeacePark
             float overlap=OverlapAt(position);
             if(pause>0&&overlap==0){pause-=deltaTime;wanderSpeed=0;Character.PlayIdlePose();return;}
             var offset=destination-position;offset.y=0;
-            if(offset.magnitude<.18f&&overlap==0)
+            if(offset.magnitude<.18f&&overlap==0&&CurrentActivity!=Activity.ApproachSlide)
             {
                 if(!leavingEntrance)
                 {VisitedTargets++;pause=Range(.6f,1.7f);wanderSpeed=0;ChooseDestination();Character.PlayIdlePose();return;}
@@ -191,12 +521,21 @@ namespace PeacePark
             }
             if(desired.sqrMagnitude<.001f)desired=-transform.forward;
             wanderSpeed=Mathf.MoveTowards(wanderSpeed,WanderSpeed,deltaTime*2.6f);
-            if(!TryStep(position,desired.normalized*(wanderSpeed*deltaTime),overlap,out var next))
+            var step=desired.normalized*(wanderSpeed*deltaTime);
+            // Keep accelerating if a very short frame rounds the first step to the same position.
+            if((position+step).Equals(position))return;
+            if(!TryStep(position,step,overlap,out var next))
             {
-                blocked+=deltaTime;wanderSpeed=0;Character.PlayIdlePose();if(blocked>1.2f)ChooseDestination();return;
+                blocked+=deltaTime;wanderSpeed=0;Character.PlayIdlePose();
+                if(blocked>1.2f)
+                {
+                    if(CurrentActivity==Activity.ApproachSlide)FinishActivity();
+                    else ChooseDestination();
+                }
+                return;
             }
             var heading=next-position;
-            var targetRotation=Quaternion.LookRotation(-heading,Vector3.up);
+            var targetRotation=Quaternion.LookRotation(-heading/heading.magnitude,Vector3.up);
             transform.rotation=Quaternion.RotateTowards(transform.rotation,targetRotation,deltaTime*(leavingEntrance?300:150));
             float turn=Quaternion.Angle(transform.rotation,targetRotation);
             if(overlap==0&&turn>35&&!leavingEntrance)
@@ -234,7 +573,7 @@ namespace PeacePark
                 var candidate=position+(i<0?step:Quaternion.Euler(0,AvoidanceAngles[i],0)*step);
                 candidate.x=Mathf.Clamp(candidate.x,area.xMin,area.xMax);
                 candidate.z=Mathf.Clamp(candidate.z,area.yMin,area.yMax);
-                if((candidate-position).sqrMagnitude<.00000001f||!park.IsSceneryClear(candidate))continue;
+                if(candidate.Equals(position)||!park.IsSceneryClear(candidate))continue;
                 float cost=OverlapAt(candidate);
                 if(cost==0){next=candidate;return true;}
                 // An animal already inside another may take a step that reduces the overlap.
@@ -242,7 +581,7 @@ namespace PeacePark
                 best=cost;
                 next=candidate;
             }
-            return next!=position;
+            return !next.Equals(position);
         }
     }
 }

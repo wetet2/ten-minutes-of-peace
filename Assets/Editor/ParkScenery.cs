@@ -28,6 +28,18 @@ namespace PeacePark.Editor
             return group;
         }
 
+        internal static Transform PlaceOnGround(string name, Mesh mesh, Material material, Transform parent,
+            Vector3 ground, float height, Quaternion rotation)
+        {
+            var bounds = mesh.bounds;
+            float scale = height / bounds.size.y;
+            var baseCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            var item = ParkGeometry.Place(name, mesh, parent, ground - rotation * baseCenter * scale,
+                Vector3.one * scale, material);
+            item.localRotation = rotation;
+            return item;
+        }
+
         internal sealed class Pieces
         {
             readonly Dictionary<Material, List<CombineInstance>> batches = new Dictionary<Material, List<CombineInstance>>();

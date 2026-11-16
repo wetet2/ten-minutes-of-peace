@@ -9,6 +9,7 @@ namespace PeacePark.Editor
 {
     internal static class ParkNaturePack
     {
+        internal const string PandazoleFolder = "Assets/Pandazole_Ultimate_Pack/Pandazole Nature Environment Pack/";
         const string PrefabFolder = "Assets/Pack_FREE_Trees/Prefabs/";
         const string TreesAndFlowersFolder = "Assets/Trees,Flowers/Prefabs/";
         const string BarkTexture = "Assets/Pack_FREE_Trees/Materials/Textures/treeBody.png";
@@ -186,7 +187,7 @@ namespace PeacePark.Editor
             }
         }
 
-        static Bounds PrefabBounds(GameObject prefab)
+        internal static Bounds PrefabBounds(GameObject prefab)
         {
             var bounds = new Bounds(Vector3.zero, Vector3.zero);
             var root = prefab.transform;

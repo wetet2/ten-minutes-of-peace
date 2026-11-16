@@ -41,12 +41,33 @@ namespace PeacePark.Editor
                 forest.gameObject.SetActive(false);
                 venues.Add(forestVenue);
             }
-            var cafe=Group("Kids cafe venue",null,Vector3.zero);
+            var cafe=Group("Playground venue",null,Vector3.zero);
             SceneManager.MoveGameObjectToScene(cafe.gameObject,scene);
             var cafeVenue=ParkKidsCafeSetup.Create(cafe);
             cafeVenue.Preview=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/Venues/KidsCafe.png");
             cafe.gameObject.SetActive(false);
             venues.Add(cafeVenue);
+            if(ParkDesertSetup.IsInstalled)
+            {
+                var desert = Group("Desert venue",null,Vector3.zero);
+                SceneManager.MoveGameObjectToScene(desert.gameObject,scene);
+                var desertVenue = ParkDesertSetup.Create(desert);
+                desertVenue.Preview = Preview("Desert");
+                desert.gameObject.SetActive(false);
+                venues.Add(desertVenue);
+            }
+            var christmas=Group("Christmas venue",null,Vector3.zero);
+            SceneManager.MoveGameObjectToScene(christmas.gameObject,scene);
+            var christmasVenue=ParkChristmasSetup.Create(christmas);
+            christmasVenue.Preview=Preview("Christmas");
+            christmas.gameObject.SetActive(false);
+            venues.Add(christmasVenue);
+            var beach=Group("Private beach venue",null,Vector3.zero);
+            SceneManager.MoveGameObjectToScene(beach.gameObject,scene);
+            var beachVenue=ParkBeachSetup.Create(beach);
+            beachVenue.Preview=Preview("Beach");
+            beach.gameObject.SetActive(false);
+            venues.Add(beachVenue);
             controller.Venues=venues.ToArray();
         }
 

@@ -234,7 +234,7 @@ namespace PeacePark.Editor
             }
         }
 
-        sealed class NatureModels
+        internal sealed class NatureModels
         {
             readonly Transform root;
             readonly Dictionary<string,(GameObject Prefab,Bounds Bounds)> prefabs=new();

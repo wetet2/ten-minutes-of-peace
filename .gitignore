@@ -4,6 +4,8 @@
 /Logs/
 /UserSettings/
 /Builds/
+/build/
+/.utmp/
 *.csproj
 *.sln
 .vs/
@@ -20,3 +22,5 @@
 /Assets/InnerverseInteractive.meta
 /Assets/LowpolyBakersHouse/
 /Assets/LowpolyBakersHouse.meta
+/Assets/Pandazole_Ultimate_Pack/
+/Assets/Pandazole_Ultimate_Pack.meta

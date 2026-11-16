@@ -189,6 +189,78 @@ namespace PeacePark
                 }
                 PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
         }
+        internal void PlayHopPose(float progress)
+        {
+            PlayIdlePose();
+            float travel=Mathf.Clamp01((progress-.17f)/.64f);
+            float airborne=4*travel*(1-travel);
+            float crouch=progress<.17f?Mathf.Sin(progress/.17f*Mathf.PI):
+                Mathf.Sin(Mathf.Clamp01((progress-.81f)/.19f)*Mathf.PI);
+            model.localPosition+=Vector3.up*(airborne*.72f-crouch*.055f);
+            body.localRotation=Quaternion.Euler(-8*airborne+6*crouch,0,0);
+            leftLeg.localRotation=rightLeg.localRotation=Quaternion.Euler(-17*airborne,0,0);
+            leftArm.localRotation=Quaternion.Euler(0,0,40+24*airborne);
+            rightArm.localRotation=Quaternion.Euler(0,0,-40-24*airborne);
+        }
+
+        internal void PlayPeekPose(float headYaw)
+        {
+            PlayIdlePose();
+            ApplyBushLean(1);
+            head.localRotation=Quaternion.Euler(-6,headYaw,headYaw*.06f);
+        }
+
+        internal void ApplyBushLean(float amount)
+        {
+            model.localPosition-=Vector3.up*(.34f*amount);
+            head.localPosition+=new Vector3(0,.12f,-.62f)*amount;
+            body.localRotation=Quaternion.Euler(-12*amount,0,0);
+        }
+
+        internal void PlayDancePose(float progress)
+        {
+            PlayIdlePose();
+            float envelope=Mathf.SmoothStep(0,1,Mathf.Min(progress,1-progress)/.16f);
+            float sway=Mathf.Sin(progress*Mathf.PI*6)*envelope;
+            body.localRotation=Quaternion.Euler(0,0,8*sway);
+            head.localRotation=Quaternion.Euler(0,9*sway,-7*sway);
+            leftArm.localRotation=Quaternion.Euler(15*sway,0,40+22*envelope+13*sway);
+            rightArm.localRotation=Quaternion.Euler(-15*sway,0,-40-22*envelope+13*sway);
+            leftLeg.localRotation=Quaternion.Euler(Mathf.Max(0,sway)*10,0,0);
+            rightLeg.localRotation=Quaternion.Euler(Mathf.Max(0,-sway)*10,0,0);
+        }
+
+        internal void PlaySlidePose(float seated)
+        {
+            PlayIdlePose();
+            model.localPosition-=Vector3.up*(.84f*seated);
+            body.localRotation=Quaternion.Euler(-10*seated,0,0);
+            head.localRotation=Quaternion.Euler(7*seated,0,0);
+            leftLeg.localRotation=rightLeg.localRotation=Quaternion.Euler(72*seated,0,0);
+            leftArm.localRotation=Quaternion.Euler(15*seated,0,40-10*seated);
+            rightArm.localRotation=Quaternion.Euler(15*seated,0,-40+10*seated);
+        }
+        internal void PlayPolePose(Vector3 pole,float grip)
+        {
+            PlayIdlePose();
+            head.localRotation=Quaternion.Euler(22*grip,40*grip,-5*grip);
+            body.localRotation=Quaternion.Euler(6*grip,0,0);
+            leftLeg.localRotation=Quaternion.Euler(28*grip,-10*grip,-7*grip);
+            rightLeg.localRotation=Quaternion.Euler(39*grip,14*grip,8*grip);
+            AimHand(leftArm,-1,.14f);
+            AimHand(rightArm,1,.035f);
+            if(correctiveReady)skin.SetBlendShapeWeight(0,100*(1-grip));
+
+            void AimHand(Transform arm,int side,float rise)
+            {
+                var target=pole+transform.right*(side*.062f);
+                target.y=arm.position.y+rise;
+                var restDirection=new Vector3(side*.78f,-.32f,-.02f);
+                var direction=arm.parent.InverseTransformPoint(target)-arm.localPosition;
+                var reach=Quaternion.FromToRotation(restDirection,direction);
+                arm.localRotation=Quaternion.Slerp(arm.localRotation,reach,grip);
+            }
+        }
         void Update(){if(running&&!ExternalMotion){sequenceTime+=Time.deltaTime;PreviewPose(sequenceTime);}}
         void WalkPose(float phase,float strength=1)
         {
@@ -204,6 +276,7 @@ namespace PeacePark
         {
             if(correctiveReady){skin.SetBlendShapeWeight(0,100);skin.SetBlendShapeWeight(1,0);skin.SetBlendShapeWeight(2,0);}
             leftLeg.localRotation=rightLeg.localRotation=body.localRotation=head.localRotation=Quaternion.identity;model.localPosition=Vector3.zero;
+            head.localPosition=new Vector3(0,2.32f,0);
             leftShoulder.localPosition=new Vector3(-.22f,2.08f,0);rightShoulder.localPosition=new Vector3(.22f,2.08f,0);
             leftShoulder.localRotation=rightShoulder.localRotation=Quaternion.identity;
             leftArm.localRotation=Quaternion.Euler(0,0,40);rightArm.localRotation=Quaternion.Euler(0,0,-40);

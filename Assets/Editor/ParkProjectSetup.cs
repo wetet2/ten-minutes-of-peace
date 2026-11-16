@@ -46,7 +46,7 @@ namespace PeacePark.Editor
             camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=new Color(.76f,.87f,.91f);
             camera.allowMSAA=true;camera.fieldOfView=48;camera.nearClipPlane=.1f;camera.farClipPlane=150;
             camera.gameObject.AddComponent<ParkVisualQuality>();camera.gameObject.AddComponent<AudioListener>();camera.gameObject.AddComponent<ParkCamera>();
-            PlayerSettings.companyName="Peace Park";PlayerSettings.productName="Ten Minutes of Peace";
+            PlayerSettings.companyName="Peace Park";
             PlayerSettings.runInBackground=true;PlayerSettings.defaultScreenWidth=2560;PlayerSettings.defaultScreenHeight=1440;
             PlayerSettings.fullScreenMode=FullScreenMode.Windowed;
             EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),ScenePath);
@@ -72,7 +72,7 @@ namespace PeacePark.Editor
         {
             if(!File.Exists(ScenePath)) Create();
             Directory.CreateDirectory("Builds/Windows");
-            var report=BuildPipeline.BuildPlayer(new[]{ScenePath},ParkPlayerBuild.WindowsExecutable,BuildTarget.StandaloneWindows64,BuildOptions.None);
+            var report=ParkPlayerBuild.BuildWindows(ScenePath,BuildOptions.None);
             if(report.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded) throw new System.Exception("Windows build failed: "+report.summary.result);
         }
     }
