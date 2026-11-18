@@ -6,22 +6,55 @@ namespace PeacePark.Editor
 {
     internal static class ParkBeachMeshes
     {
+        const int SandColumns=224,SandRows=256;
+        const float MinX=-150,MaxX=150,MinZ=-190,MaxZ=270;
         internal static float Shore(float x) => -7-.014f*x*x+.25f*Mathf.Sin(x*.4f);
+        internal static float LandDistance(float x,float z)
+        {
+            float edge=(1-new Vector2((x+8)/62,(z-100)/120).magnitude)*55;
+            float slope=-.028f*x+.1f*Mathf.Cos(x*.4f);
+            float bay=(z-Shore(x))/Mathf.Sqrt(1+slope*slope);
+            float blend=Mathf.Clamp01(.5f+.5f*(edge-bay)/4);
+            return Mathf.Lerp(edge,bay,blend)-4*blend*(1-blend);
+        }
         internal static float Height(float x,float z)
         {
-            float d=z-Shore(x);
+            float d=LandDistance(x,z);
             return d<0 ? d*.17f : Mathf.SmoothStep(0,.18f,Mathf.Clamp01(d/2.2f));
+        }
+
+        // Use the same diagonal as Ground: a crab's feet sit on the rendered triangle,
+        // which can sit below the smooth shoreline profile between grid vertices.
+        internal static float SandSurface(float x,float z,out Vector3 normal)
+        {
+            float dx=(MaxX-MinX)/SandColumns,dz=(MaxZ-MinZ)/SandRows;
+            int col=Mathf.Clamp(Mathf.FloorToInt((x-MinX)/dx),0,SandColumns-1);
+            int row=Mathf.Clamp(Mathf.FloorToInt((z-MinZ)/dz),0,SandRows-1);
+            float x0=MinX+col*dx,z0=MinZ+row*dz;
+            float u=(x-x0)/dx,v=(z-z0)/dz;
+            float a=Height(x0,z0),c=Height(x0+dx,z0+dz);
+            float side=u<v?Height(x0,z0+dz):Height(x0+dx,z0);
+            float riseX=u<v?c-side:side-a;
+            float riseZ=u<v?side-a:c-side;
+            normal=new Vector3(-riseX/dx,1,-riseZ/dz).normalized;
+            return a+u*riseX+v*riseZ;
         }
 
         internal static Mesh Ground(bool water)
         {
             var mesh=new Shape();
-            const int columns=192,rows=160;
+            int columns=water?192:SandColumns,rows=water?192:SandRows;
             for(int z=0;z<=rows;z++)
             for(int x=0;x<=columns;x++)
             {
-                float px=Mathf.Lerp(-150,150,x/(float)columns);
-                float pz=Mathf.Lerp(-190,90,z/(float)rows);
+                float px=Mathf.Lerp(MinX,MaxX,x/(float)columns);
+                float pz=Mathf.Lerp(MinZ,MaxZ,z/(float)rows);
+                if(water)
+                {
+                    // Dense vertices around the bay; a continuous outer ocean beyond the fog/far clip.
+                    float u=x/(float)columns*2-1,v=z/(float)rows*2-1;
+                    px=200*u+500*Mathf.Pow(u,5);pz=40+200*v+500*Mathf.Pow(v,5);
+                }
                 mesh.Add(new Vector3(px,water?.04f:Height(px,pz),pz),new Vector2(x/(float)columns,z/(float)rows));
                 if(x==columns||z==rows)continue;
                 int a=z*(columns+1)+x;

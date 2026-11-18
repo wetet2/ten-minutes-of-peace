@@ -72,13 +72,14 @@ namespace PeacePark
             var bind=mesh.bindposes;var bones=skin.bones;int count=rabbit.SkinVertexCount;
             var neighbours=Neighbours(count,rabbit.SkinTriangles);var mask=new float[rest.Length];
             for(int i=0;i<count;i++)mask[i]=Mask(rest[i],true);
-            var rootPosition=rabbit.transform.position;var rootRotation=rabbit.transform.rotation;
             const int frames=20;
             for(int clip=0;clip<3;clip++)
             for(int frame=0;frame<=(clip==0?0:frames);frame++)
             {
                 float t=(float)frame/frames;
-                rabbit.PreviewPose(clip==0?2.5f:clip==1?4.4f+t*Mathf.PI*2/6:2.75f+t*1.65f);
+                if(clip==0)rabbit.PlayIdlePose();
+                else if(clip==1)rabbit.PlayWalkingPose(t*Mathf.PI*2);
+                else rabbit.PlayWavePose(t);
                 var matrices=new Matrix4x4[bones.Length];var rotations=new Quaternion[bones.Length];var duals=new Quaternion[bones.Length];
                 for(int i=0;i<bones.Length;i++)
                 {
@@ -104,11 +105,12 @@ namespace PeacePark
                 var work=new Vector3[rest.Length];
                 // Sculpt the raised junction as a smooth union of chest, moving shoulder
                 // and arm. This removes the crease left by rotation blending alone.
+                var inverseBody=matrices[0].inverse;
                 for(int i=0;i<count;i++)if(mask[i]>.01f)
                 {
                     int side=rest[i].x<0?-1:1;
                     var inverseClavicle=matrices[side<0?6:7].inverse;var inverseArm=matrices[side<0?2:3].inverse;
-                    float Surface(Vector3 point)=>RabbitMesh.RaisedShoulderSurface(point,inverseClavicle,inverseArm,side);
+                    float Surface(Vector3 point)=>RabbitMesh.RaisedShoulderSurface(point,inverseBody,inverseClavicle,inverseArm,side);
                     var w=weights[i];float head=0;
                     if(w.boneIndex0==1)head+=w.weight0;if(w.boneIndex1==1)head+=w.weight1;
                     if(w.boneIndex2==1)head+=w.weight2;if(w.boneIndex3==1)head+=w.weight3;
@@ -139,7 +141,7 @@ namespace PeacePark
                 }
                 mesh.AddBlendShapeFrame(clip==0?"Relaxed shoulders":clip==1?"Walking shoulder volume":"Waving shoulder volume",clip==0?100:1+t*99,delta,deltaNormals,null);
             }
-            rabbit.PreviewPose(2.5f);rabbit.transform.SetPositionAndRotation(rootPosition,rootRotation);
+            rabbit.PlayIdlePose();
         }
     }
 }

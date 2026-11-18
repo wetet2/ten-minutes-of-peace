@@ -25,7 +25,8 @@ namespace PeacePark
         };
 
         RectTransform canvasRect, content;
-        RawImage meadow, wordmark;
+        RawImage meadow;
+        Text wordmark;
         Text tagline;
         readonly RawImage[] animals = new RawImage[AnimalNames.Length];
         readonly RawImage[] groundShadows = new RawImage[AnimalNames.Length];
@@ -43,8 +44,12 @@ namespace PeacePark
             canvasRect = (RectTransform)transform;
             meadow = Art("Park Illustration", canvasRect, "Meadow");
             content = Child("Safe Area", canvasRect);
-            wordmark = Art("Ten Minutes of Peace", content, "Title");
+            wordmark = Label("App Title", content, ParkLanguage.Title, ParkFonts.Bold);
+            wordmark.resizeTextForBestFit = true;
+            wordmark.resizeTextMinSize = 10;
+            wordmark.verticalOverflow = VerticalWrapMode.Truncate;
             tagline = Label("Tagline", content, "애들아 놀아라. 아빠 10분만 쉰다", ParkFonts.Bold);
+            tagline.verticalOverflow = VerticalWrapMode.Truncate;
             shadowTexture = CreateGroundShadow();
             for (int i = 0; i < groundShadows.Length; i++)
             {
@@ -58,7 +63,7 @@ namespace PeacePark
             buttonSurface = CreateButtonSurface();
             host = new ModeButton(this, "놀이 공간 열기", "이 기기에서 공간을 열어요", "Gate",
                 new Color32(188, 239, 129, 255));
-            coloring = new ModeButton(this, "동물 색칠하기", "색칠한 친구를 보내요", "Crayons",
+            coloring = new ModeButton(this, "함께 놀기", "색칠한 친구를 보내요", "PlayTogether",
                 new Color32(255, 188, 110, 255));
             host.Button.onClick.AddListener(() => park.ChooseHostMode());
             coloring.Button.onClick.AddListener(park.ChooseDrawingMode);
@@ -103,10 +108,13 @@ namespace PeacePark
             float center = area.width / 2;
             bool portrait = width < height;
             float titleWidth = portrait ? width * .92f : Mathf.Min(width * .75f, height * .985f);
-            Fit(wordmark, new Rect(center - titleWidth / 2, height * (portrait ? .034f : .037f),
+            wordmark.resizeTextMaxSize = Pixels(height * (portrait ? .062f : .09f));
+            Place(wordmark.rectTransform, new Rect(center - titleWidth / 2, height * (portrait ? .034f : .037f),
                 titleWidth, height * (portrait ? .089f : .128f)));
             Place(tagline.rectTransform, new Rect(left, height * (portrait ? .119f : .158f), width, height * .053f));
-            tagline.fontSize = Pixels(Mathf.Min(width * .052f, height * .038f));
+            tagline.resizeTextForBestFit = true;
+            tagline.resizeTextMinSize = 8;
+            tagline.resizeTextMaxSize = tagline.fontSize = Pixels(Mathf.Min(width * .052f, height * .038f));
 
             var positions = portrait ? PortraitAnimals : LandscapeAnimals;
             for (int i = 0; i < animals.Length; i++)
@@ -124,7 +132,7 @@ namespace PeacePark
             float gap = height * (portrait ? .010f : .017f);
             float buttonHeight = height * (portrait ? .093f : .136f);
             float buttonWidth = portrait ? Mathf.Min(width * .86f, height * .47f)
-                : (Mathf.Min(width * .91f, height * .836f) - gap) / 2;
+                : (Mathf.Min(width * .91f, height * (ParkLanguage.IsKorean ? .836f : 1.13f)) - gap) / 2;
             float buttonTop = height * (portrait ? .746f : .812f);
             float buttonLeft = center - (portrait ? buttonWidth : buttonWidth * 2 + gap) / 2;
             host.Layout(new Rect(buttonLeft, buttonTop, buttonWidth, buttonHeight));
@@ -156,6 +164,7 @@ namespace PeacePark
                 icon = Art(asset, root, asset);
                 title = Label("Label", root, text, ParkFonts.Bold, TextAnchor.MiddleLeft);
                 description = Label("Description", root, detail, ParkFonts.Regular, TextAnchor.MiddleLeft);
+                title.verticalOverflow = description.verticalOverflow = VerticalWrapMode.Truncate;
             }
 
             public void Layout(Rect bounds)
@@ -166,8 +175,10 @@ namespace PeacePark
                 Fit(icon, new Rect(w * .062f, h * .13f, w * .275f, h * .67f));
                 Place(title.rectTransform, new Rect(w * .355f, h * .128f, w * .59f, h * .39f));
                 Place(description.rectTransform, new Rect(w * .355f, h * .52f, w * .59f, h * .25f));
-                title.fontSize = Pixels(Mathf.Min(w * .092f, h * .32f));
-                description.fontSize = Pixels(Mathf.Min(w * .053f, h * .177f));
+                title.resizeTextForBestFit = description.resizeTextForBestFit = true;
+                title.resizeTextMinSize = description.resizeTextMinSize = 8;
+                title.resizeTextMaxSize = title.fontSize = Pixels(Mathf.Min(w * .092f, h * .32f));
+                description.resizeTextMaxSize = description.fontSize = Pixels(Mathf.Min(w * .053f, h * .177f));
             }
         }
 
@@ -194,7 +205,7 @@ namespace PeacePark
         internal static Text Label(string name, RectTransform parent, string text, Font font, TextAnchor alignment = TextAnchor.MiddleCenter)
         {
             var label = Child(name, parent).gameObject.AddComponent<Text>();
-            label.text = text;
+            label.text = ParkLanguage.Text(text);
             label.font = font;
             label.color = Ink;
             label.alignment = alignment;

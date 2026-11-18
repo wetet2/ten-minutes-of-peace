@@ -20,7 +20,9 @@ namespace PeacePark.Editor
             new Vector2(-21,-12), new Vector2(20,-13), new Vector2(-13,-16), new Vector2(13,-16),
             new Vector2(-21,-3), new Vector2(20,-4), new Vector2(-14,-6), new Vector2(13,-5),
             new Vector2(-22,6), new Vector2(21,6), new Vector2(-17,11), new Vector2(18,12),
-            new Vector2(-25,18), new Vector2(25,19), new Vector2(-5,10), new Vector2(6,11)
+            new Vector2(-25,18), new Vector2(25,19), new Vector2(-5,10), new Vector2(6,11),
+            new Vector2(-6,-23), new Vector2(9,-26), new Vector2(-28,-25), new Vector2(26,-30),
+            new Vector2(-16,-37), new Vector2(3,-39), new Vector2(33,-41)
         };
 
         internal static bool IsInstalled => AssetDatabase.LoadAssetAtPath<GameObject>(Prefabs + Cacti[0] + ".prefab");
@@ -85,12 +87,12 @@ namespace PeacePark.Editor
                 {
                     var size = mesh.bounds.size;
                     float width = Mathf.Max(size.x, size.z);
-                    float maxWidth = point.y > 35 ? 5 : 3;
+                    float maxWidth = Mathf.Abs(point.y) > 35 ? 5 : 3;
                     height = Mathf.Min(height, size.y * maxWidth / width);
                 }
                 var position = new Vector3(point.x, ParkDuneTerrain.Height(point.x, point.y) - .035f, point.y);
                 var prop = PlaceOnGround(name, mesh, renderer.sharedMaterial, scenery, position, height, Quaternion.Euler(0, yaw, 0));
-                if (height < .65f) return;
+                if (height < .65f || point.y < -20) return;
                 var bounds = prop.GetComponent<MeshRenderer>().bounds;
                 float radius = Mathf.Clamp(Mathf.Min(bounds.extents.x, bounds.extents.z) * .85f, .24f, 1.25f);
                 obstacles.Add(Rect.MinMaxRect(point.x - radius, point.y - radius, point.x + radius, point.y + radius));

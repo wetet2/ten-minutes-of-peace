@@ -10,10 +10,10 @@ namespace PeacePark.Editor
         internal static void Create(Transform root,float width,float depth,Material floor,Mesh box,Mesh sphere)
         {
             float halfWidth=width/2,halfDepth=depth/2;
-            var grass=Paint("Sunlit cafe meadow","#93BC6C");
+            var grass=Paint("Sunlit cafe meadow","#78AD56");
             grass.SetFloat("_Variation",.063f);
             grass.SetFloat("_GrassDetail",.17f);
-            var hills=Paint("Far cafe hills","#7CA57B");
+            var hills=Paint("Far cafe hills","#6E9E6A");
             hills.SetFloat("_Variation",.035f);
             var grassMesh=Meadow(halfWidth,halfDepth);
             var meadow=ParkGeometry.Place("Continuous terrace meadow",grassMesh,root,Vector3.zero,Vector3.one,grass);

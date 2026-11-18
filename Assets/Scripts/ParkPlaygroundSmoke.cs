@@ -45,7 +45,7 @@ namespace PeacePark
             Debug.Log("CAMERA RESET PASS: restored the scene's initial position, angle and zoom.");
             Require(Mathf.Approximately(ParkCamera.DistanceFromPinch(30,100,150),20)&&
                 Mathf.Approximately(ParkCamera.DistanceFromPinch(20,150,100),30)&&
-                ParkCamera.DistanceFromPinch(30,100,900)==7&&ParkCamera.DistanceFromPinch(30,900,100)==48,
+                ParkCamera.DistanceFromPinch(30,100,900)==3.5f&&ParkCamera.DistanceFromPinch(30,900,100)==48,
                 "Pinch zoom did not follow the touch span or respect the camera limits.");
             Debug.Log("PINCH ZOOM PASS: zoom in, zoom out and camera limits.");
             var initialFocus=orbit.focus;
@@ -144,12 +144,13 @@ namespace PeacePark
             yield return Capture("duck-fountain.png");
             orbit.enabled=true;
             var regular=ParkFonts.Regular;var bold=ParkFonts.Bold;
-            Require(regular&&bold&&regular.name=="BaskinRobbins-Regular"&&bold.name=="BaskinRobbins-Bold","Bundled Baskin Robbins fonts missing");
-            foreach(char letter in "애들아놀라빠분만쉰다놀이공간열기동물색칠하기연결앞모습뒷보내기자동원트리케라톱스")
-                Require(regular.HasCharacter(letter)&&bold.HasCharacter(letter),"Korean glyph missing: "+letter);
+            string family=ParkLanguage.IsKorean?"BaskinRobbins":"ComicRelief";
+            Require(regular&&bold&&regular.name==family+"-Regular"&&bold.name==family+"-Bold","Bundled language fonts missing");
+            foreach(char letter in ParkLanguage.IsKorean?"애들아놀라빠분만쉰다놀이공간열기동물색칠하기연결앞모습뒷보내기자동원트리케라톱스":"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+                Require(regular.HasCharacter(letter)&&bold.HasCharacter(letter),"UI glyph missing: "+letter);
             Require(GameObject.Find("Storybook countryside"),"Continuous countryside missing");
             Require(!GameObject.Find("Earth edge"),"Display plinth still visible");
-            Debug.Log("STORYBOOK FONT/ART PASS: bundled Baskin Robbins Regular/Bold render Korean UI glyphs; continuous landscape replaces visible plinth.");
+            Debug.Log("STORYBOOK FONT/ART PASS: bundled language fonts render UI glyphs; continuous landscape replaces visible plinth.");
             foreach(var house in park.Houses)
             {
                 Require(house.HasRoundedPorch&&!house.transform.Find("Step")&&!house.transform.Find("Cottage walkway"),"Old rectangular porch still present");
@@ -333,7 +334,7 @@ namespace PeacePark
                         var agent=park.Animals[firstArrival+i];
                         if(agent.State!=ParkRabbitState.Wandering)continue;
                         var delta=agent.transform.position-previousPositions[i];
-                        Require(delta.magnitude<.65f*step+.001f,"Forest animal jumped after waving: "+delta);
+                        Require(delta.magnitude<ParkRabbitAgent.WanderSpeed*step+.001f,"Forest animal jumped after waving: "+delta);
                     }
                 }
                 for(int i=firstArrival;i<park.Animals.Count;i++)
@@ -877,6 +878,14 @@ namespace PeacePark
                 character.EnsureBuilt();
                 character.Grounded=true;
                 const float phase=.7f;
+                for(int frame=48;frame<60;frame++)
+                {
+                    float waveTime=frame/60f;
+                    character.PlayWavePose(waveTime);
+                    Require(Mathf.Abs(character.Skin.GetBlendShapeWeight(2)-(1+99*waveTime))<.01f&&
+                        character.Skin.GetBlendShapeWeight(0)==0,
+                        "Shoulder correction must follow the lowering arm without blending in the relaxed pose.");
+                }
                 character.PlayWavePose(1);
                 character.Skin.BakeMesh(baked,false);
                 var endOfWave=baked.vertices;
@@ -1006,7 +1015,7 @@ namespace PeacePark
                                 checkedFirstStep=true;
                             }
                             if(agent.State==ParkRabbitState.Wandering)
-                                Require(motion.magnitude<=.65f*.05f+.001f,"The first steps exceeded ordinary walking speed.");
+                                Require(motion.magnitude<=ParkRabbitAgent.WanderSpeed*.05f+.001f,"The first steps exceeded ordinary walking speed.");
                         }
                         int chosen=house.LastDepartureDirection;
                         var moved=sample.transform.position-welcome;
@@ -1032,8 +1041,9 @@ namespace PeacePark
             {
                 if(house.ExitTerrain||house.EntranceSlide||house.EntrancePole)continue;
                 float authoredScale=house.name=="Baker's house"?.94f:1f;
-                Require(Vector3.Distance(house.transform.localScale,Vector3.one*(authoredScale*1.1f))<.001f,
-                    $"House {house.name} is not uniformly scaled to 110%.");
+                float expectedScale=authoredScale*(house.SecondDoorHinge?1f:1.1f);
+                Require(Vector3.Distance(house.transform.localScale,Vector3.one*expectedScale)<.001f,
+                    $"House {house.name} does not match its expected scale of {expectedScale:F2}.");
             }
             var checkedSkins=new System.Collections.Generic.HashSet<AnimalKind>();
             foreach(var venue in venues)
@@ -1060,7 +1070,7 @@ namespace PeacePark
                 Require(agent.ExitedThroughOpenDoor&&agent.WaveCount==1,"The full-size animal did not finish its entrance.");
                 Destroy(sample);
             }
-            Debug.Log("FULL SIZE EMERGENCE PASS: every animal exits at 130% scale with uniformly enlarged 110% houses.");
+            Debug.Log("FULL SIZE EMERGENCE PASS: every animal exits at 130% scale through its venue's doorway.");
             Debug.Log("SKIN WEIGHTS PASS: all species have sorted, normalized influences and rigid head vertices are bound to the head bone.");
         }
         static void CheckSkinWeights(RabbitCharacter character)

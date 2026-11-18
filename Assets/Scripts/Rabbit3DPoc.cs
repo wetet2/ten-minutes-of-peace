@@ -31,7 +31,7 @@ namespace PeacePark
                 buttonStyle=new GUIStyle(GUI.skin.button){font=font,fontSize=24,fontStyle=FontStyle.Normal};
                 buttonStyle.normal.textColor=new Color32(70,54,43,255);
             }
-            if(GUI.Button(new Rect(24,24,190,58),"다시 색칠하기",buttonStyle))
+            if(GUI.Button(new Rect(24,24,190,58),ParkLanguage.Text("다시 색칠하기"),buttonStyle))
             {
                 rabbit.ResetPreview();drawing.SelectAnimal(2);drawing.Visible=true;
             }

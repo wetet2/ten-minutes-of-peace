@@ -11,28 +11,32 @@ Shader "PeacePark/Beach Water"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
             #pragma multi_compile_fog
             #include "UnityCG.cginc"
+            #include "BeachCoast.cginc"
             float4 _Shallow,_Deep;
             struct appdata { float4 vertex:POSITION; };
             struct v2f { float4 pos:SV_POSITION; float3 world:TEXCOORD0; UNITY_FOG_COORDS(1) };
             v2f vert(appdata v)
             {
                 v2f o; float3 p=mul(unity_ObjectToWorld,v.vertex).xyz;
-                p.y+=sin(p.x*.53+p.z*.8+_Time.y*.9)*.028+sin(p.z*1.9-_Time.y*1.1)*.012;
+                float nearby=1-smoothstep(70,180,length(_WorldSpaceCameraPos.xz-p.xz));
+                p.y+=(sin(p.x*.53+p.z*.8+_Time.y*.9)*.028+sin(p.z*1.9-_Time.y*1.1)*.012)*nearby;
                 o.world=p; o.pos=mul(UNITY_MATRIX_VP,float4(p,1)); UNITY_TRANSFER_FOG(o,o.pos); return o;
             }
             float hash(float2 p) { return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453); }
             fixed4 frag(v2f i):SV_Target
             {
                 float2 p=i.world.xz;
-                float shore=-7-.014*p.x*p.x+.25*sin(p.x*.4);
                 float tide=.28*sin(_Time.y*.62)+.12*sin(p.x*.65+_Time.y*.34);
-                float distance=shore-p.y+tide;
+                float landDistance=PeaceBeachLandDistance(p);
+                float distance=-landDistance+tide;
                 clip(distance);
-                float depth=max(0,shore-p.y)*.17;
-                float3 normal=normalize(float3(.065*cos(p.x*1.5+p.y*2.1+_Time.y),1,
-                    .11*cos(p.y*2.2-_Time.y*1.1)+.045*sin(p.x*3.3+p.y*1.6+_Time.y)));
+                float depth=max(0,-landDistance)*.17;
+                float rippleVisibility=1-smoothstep(.12,.85,length(fwidth(p)));
+                float3 normal=normalize(float3(.065*cos(p.x*1.5+p.y*2.1+_Time.y)*rippleVisibility,1,
+                    (.11*cos(p.y*2.2-_Time.y*1.1)+.045*sin(p.x*3.3+p.y*1.6+_Time.y))*rippleVisibility));
                 float3 view=normalize(_WorldSpaceCameraPos-i.world);
                 float fresnel=pow(1-saturate(dot(view,normal)),4);
                 float3 water=lerp(_Shallow.rgb,_Deep.rgb,1-exp(-depth*.25));

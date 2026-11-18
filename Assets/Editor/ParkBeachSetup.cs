@@ -8,17 +8,25 @@ namespace PeacePark.Editor
     internal sealed class ParkBeachSetup
     {
         readonly System.Random random=new System.Random(73581);
-        readonly Material sand=Surface("Warm coral sand","#C8AE80",0);
+        readonly Material sand=Surface("Warm coral sand","#D8BD8F",0);
         readonly Material bark=Surface("Weathered coconut bark","#967654",1);
-        readonly Material rock=Surface("Salt worn granite","#A89F87",2);
-        readonly Material[] leaves={Surface("Sunlit palm leaf","#65852B",3),Surface("Emerald understory","#346127",3),
-            Surface("Fresh broad leaves","#608633",3),Surface("Deep tropical canopy","#365B2E",3)};
+        readonly Material forestBark=Surface("Ancient rainforest bark","#796C4E",4);
+        readonly Material rock=ParkBeachMountainSetup.RockMaterial();
+        readonly Material[] leaves={Surface("Sunlit palm leaf","#648D29",3),Surface("Emerald understory","#245322",3),
+            Surface("Fresh broad leaves","#49832C",3),Surface("Deep tropical canopy","#254E29",3)};
+        readonly Material canopy=ParkBeachMountainSetup.Foliage("Dense broadleaf tree canopy",new Color32(55,95,31,255));
+        readonly Mesh crown=ParkBeachMountainSetup.Crown();
+        readonly Mesh forkedWood=ParkGeometry.Trunk();
+        readonly Material sunlitCanopy=ParkBeachMountainSetup.Foliage("Sunlit jungle crowns",new Color32(78,119,49,255));
+        readonly Mesh bough=ParkIslandLeaves.Bough();
+        readonly Material boughPaint=ParkIslandLeaves.Material("Rainforest leaf sprays",new Color(.54f,.68f,.47f));
         readonly Mesh leaf=ParkBeachMeshes.Leaf(1,.46f,.13f);
         readonly Mesh banana=ParkBeachMeshes.Leaf(1,.40f,.35f,18);
         readonly Mesh frond=ParkBeachMeshes.PalmFrond();
         readonly Mesh sphere=PrimitiveMesh(PrimitiveType.Sphere);
         readonly Mesh cylinder=PrimitiveMesh(PrimitiveType.Cylinder);
         readonly List<Rect> obstacles=new List<Rect>();
+        readonly ParkBeachShorePlacement shoreline=new ParkBeachShorePlacement();
 
         internal static ParkVenue Create(Transform parent)=>new ParkBeachSetup().Build(parent);
 
@@ -29,6 +37,7 @@ namespace PeacePark.Editor
             var oceanMaterial=new Material(Shader.Find("PeacePark/Beach Water")){name="Clear turquoise coastal water"};
             var sea=ParkGeometry.Place("Animated transparent sea",ParkBeachMeshes.Ground(true),parent,Vector3.zero,Vector3.one,oceanMaterial);
             sea.GetComponent<MeshRenderer>().shadowCastingMode=ShadowCastingMode.Off;
+            ParkBeachMountainSetup.Create(parent);
 
             foreach(var palm in new[]{new Vector3(-13,.18f,-3),new Vector3(-10,.18f,5.5f),new Vector3(-15,.18f,9),
                 new Vector3(11,.18f,5.5f),new Vector3(15,.18f,2),new Vector3(18,.18f,9),new Vector3(-21,.18f,2),new Vector3(24,.18f,8)})
@@ -39,12 +48,15 @@ namespace PeacePark.Editor
                 var plants=new Pieces();
                 for(int column=-8;column<=8;column++)
                 {
-                    float x=column*4.5f+Range(-1.2f,1.2f),z=12+row*5.5f+Range(-.8f,.8f);
+                    float x=column*4.5f+Range(-1.9f,1.9f),z=12+row*5.5f+Range(-1.3f,1.3f);
                     if(row==0&&Mathf.Abs(x)<2.8f)continue;
-                    Tree(plants,new Vector3(x,.18f,z),Range(7,11)+row*.6f);
+                    Tree(plants,new Vector3(x,.18f,z),Range(6.8f,10.3f)+row*.38f);
                 }
                 BuildPlants(plants,parent,$"Layer {row+1} of tropical canopy");
             }
+            var emergent=new Pieces();
+            Tree(emergent,new Vector3(-17,.18f,23),16.5f);
+            BuildPlants(emergent,parent,"Tall rainforest hardwood");
             for(int side=-1;side<=1;side+=2)
             {
                 var plants=new Pieces();
@@ -78,14 +90,17 @@ namespace PeacePark.Editor
             for(int side=-1;side<=1;side+=2)
             for(int i=0;i<17;i++)
             {
-                float x=side*(16.5f+i*.62f+Range(-1,1)),z=-7+i*.82f+Range(-1.4f,1.4f);
-                float height=Range(1.0f,3.5f);
+                float x=side*(16.5f+i*.80f+Range(-1,1)),z=-8+i*1.4f+Range(-1.0f,1.0f);
+                float height=Range(1.0f,i<5?2.1f:2.8f);
+                var size=new Vector3(height*Range(.9f,1.4f),height,height*Range(.7f,1.1f));
                 stones.Add(ParkBeachMeshes.Rock(i+side*29),rock,new Vector3(x,ParkBeachMeshes.Height(x,z)+height*.35f,z),
-                    new Vector3(height*Range(.9f,1.4f),height,height*Range(.7f,1.1f)),Quaternion.Euler(0,i*41,0));
+                    size,Quaternion.Euler(0,i*41,0));
+                shoreline.AddRock(x,z,Mathf.Max(size.x,size.z)*1.2f);
             }
             stones.Build(Group("Granite headlands",parent,Vector3.zero));
+            Flowers(parent);
             ShoreDetails(parent);
-            ParkBeachWildlifeSetup.Create(parent);
+            ParkBeachWildlifeSetup.Create(parent,shoreline);
             var entrances=new List<ParkHouse>();
             for(int i=0;i<5;i++)
             {
@@ -104,13 +119,15 @@ namespace PeacePark.Editor
                     Rosette(cover,entrance.position+new Vector3(plant*.56f,0,-.36f),.95f,true);
                 BuildPlants(cover,parent,$"Low leaves framing arrival {i+1}");
             }
-            parent.gameObject.AddComponent<ParkBeachAtmosphere>();
+            var atmosphere=parent.gameObject.AddComponent<ParkBeachAtmosphere>();
+            atmosphere.SkyMaterial=new Material(Shader.Find("PeacePark/Island Sky")){name="Tropical sky with drifting clouds"};
             return new ParkVenue
             {
                 Name="해변가",Root=parent.gameObject,Houses=entrances.ToArray(),LawnHeight=.18f,
                 WalkArea=Rect.MinMaxRect(-10,-4.8f,10,7.2f),WalkObstacles=obstacles.ToArray(),
-                Focus=new Vector3(0,2.5f,1.4f),Distance=39,Yaw=-10,Pitch=26,MaxDistance=57,
-                FogEnd=210,Sky=new Color32(126,202,232,255)
+                Focus=new Vector3(0,7,1.4f),Distance=43,Yaw=-7,Pitch=12,MaxDistance=62,
+                CameraPanLimits=new Vector2(70,90),CloseFocusHeight=.9f,
+                FogEnd=370,Sky=new Color32(151,206,220,255)
             };
         }
 
@@ -136,18 +153,42 @@ namespace PeacePark.Editor
 
         void Tree(Pieces pieces,Vector3 point,float height)
         {
-            pieces.Add(cylinder,bark,point+Vector3.up*height*.37f,new Vector3(.38f,height*.37f,.38f));
-            for(int branch=0;branch<9;branch++)
+            if(ParkBeachMeshes.LandDistance(point.x,point.z)<2)return;
+            point.y=Mathf.Max(point.y,ParkBeachMountainSetup.Height(point.x,point.z)-.1f);
+            height=Mathf.Max(3.6f,height-point.y*.76f);
+            var fork=point+new Vector3(Range(-.045f,.045f),.57f,Range(-.035f,.035f))*height;
+            Wood(point,fork,height*.15f);
+            float spread=height*Range(.20f,.29f);
+            float azimuth=Range(0,360);
+            for(int limb=0;limb<4;limb++)
             {
-                float angle=branch*2.4f+point.x;
-                var crown=point+new Vector3(Mathf.Cos(angle)*height*.20f,height*(.60f+.042f*branch),Mathf.Sin(angle)*height*.20f);
-                pieces.Beam(cylinder,bark,point+Vector3.up*height*.51f,crown,.12f);
-                for(int sprig=0;sprig<10;sprig++)
+                float yaw=azimuth+limb*99+Range(-17,17);
+                var outwards=Quaternion.Euler(0,yaw,0)*Vector3.forward;
+                var start=Vector3.Lerp(point,fork,Range(.72f,.98f));
+                var elbow=fork+outwards*spread*.46f+Vector3.up*height*.072f;
+                var tip=fork+outwards*spread+Vector3.up*height*Range(.16f,.26f);
+                Wood(start,elbow,height*.082f);
+                Wood(elbow,tip,height*.050f);
+                float radius=spread*Range(.78f,1.07f);
+                var turn=Quaternion.Euler(0,yaw,0);
+                pieces.Add(crown,limb%3==0?sunlitCanopy:canopy,tip,new Vector3(radius,radius*.68f,radius*.92f),turn);
+                // Fine leaf sprays break up the outline; most foliage belongs to one connected crown.
+                for(int spray=0;spray<5;spray++)
                 {
-                    float yaw=angle*Mathf.Rad2Deg+sprig*137.5f;
-                    var offset=Quaternion.Euler(0,yaw,0)*Vector3.forward*Range(.05f,.65f);
-                    pieces.Add(leaf,leaves[branch%2==0?3:1],crown+offset,Vector3.one*Range(1.5f,2.4f),Quaternion.Euler(Range(-32,14),yaw,Range(-20,20)));
+                    var twist=Quaternion.Euler(0,yaw+spray*72,0);
+                    var offset=twist*new Vector3(0,.22f+(spray%2)*.16f,.80f)*radius;
+                    pieces.Add(bough,boughPaint,tip+offset,Vector3.one*(radius*.72f),twist);
                 }
+            }
+            var leader=fork+Vector3.up*height*.30f;
+            Wood(fork,leader,height*.068f);
+            pieces.Add(crown,sunlitCanopy,leader,new Vector3(spread*1.10f,height*.14f,spread),Quaternion.Euler(0,azimuth,0));
+
+            void Wood(Vector3 from,Vector3 to,float girth)
+            {
+                var axis=to-from;
+                pieces.Add(forkedWood,forestBark,from,new Vector3(girth,axis.magnitude/2.55f,girth),
+                    Quaternion.FromToRotation(Vector3.up,axis));
             }
         }
 
@@ -167,14 +208,37 @@ namespace PeacePark.Editor
             var pieces=new Pieces();
             var ivory=Surface("Shell ivory","#EADAC0",2);
             var pink=Surface("Shell peach","#D9AC8E",2);
-            for(int i=0;i<115;i++)
+            for(int i=0;i<144;i++)
             {
-                float x=Range(-15,15),z=ParkBeachMeshes.Shore(x)+Range(.7f,3.0f);
+                var point=shoreline.Point(i%3,Range(.03f,.97f),Range(.7f,4.2f));
+                if(!shoreline.Clear(point,.12f))continue;
                 float size=Range(.035f,.11f);
-                pieces.Add(sphere,i%4==0?pink:ivory,new Vector3(x,ParkBeachMeshes.Height(x,z)+size*.18f,z),
+                pieces.Add(sphere,i%4==0?pink:ivory,point+Vector3.up*size*.18f,
                     new Vector3(size,size*.36f,size*.75f),Quaternion.Euler(0,i*73,0));
             }
             pieces.Build(Group("Small shells in the tide line",parent,Vector3.zero));
+        }
+
+        void Flowers(Transform parent)
+        {
+            var flowers=new Pieces();
+            var coral=Surface("Wild hibiscus coral","#DC5039",3);
+            var gold=Surface("Hibiscus golden pollen","#E9B537",2);
+            for(int i=0;i<24;i++)
+            {
+                float x=(i%2==0?-1:1)*Range(11,22),z=Range(1,10);
+                if(ParkBeachMeshes.LandDistance(x,z)<2)continue;
+                var center=new Vector3(x,Range(.8f,1.6f),z);
+                flowers.Beam(cylinder,leaves[1],new Vector3(x,.18f,z),center,.025f);
+                for(int petal=0;petal<5;petal++)
+                {
+                    float a=petal*Mathf.PI*2/5;
+                    flowers.Add(sphere,coral,center+new Vector3(Mathf.Cos(a)*.19f,Mathf.Sin(a)*.19f,0),
+                        new Vector3(.30f,.35f,.08f),Quaternion.Euler(0,0,petal*72));
+                }
+                flowers.Add(sphere,gold,center+Vector3.back*.06f,Vector3.one*.13f);
+            }
+            flowers.Build(Group("Wild hibiscus around the bay",parent,Vector3.zero));
         }
 
         static void BuildPlants(Pieces pieces,Transform parent,string name)=>pieces.Build(Group(name,parent,Vector3.zero));

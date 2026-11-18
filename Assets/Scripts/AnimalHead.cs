@@ -137,13 +137,15 @@ namespace PeacePark
                     }
                     if(back)break;
                     float trunkY=Mathf.Clamp(y,.522f,.727f);
+                    float trunkT=1-Mathf.InverseLerp(.522f,.727f,trunkY);
+                    float trunkX=.5f+.045f*trunkT*trunkT;
                     float trunkRadius=Mathf.Lerp(.033f,.052f,Mathf.InverseLerp(.522f,.727f,trunkY));
-                    float trunk=new Vector2(x-.5f,y-trunkY).magnitude-trunkRadius;
+                    float trunk=new Vector2(x-trunkX,y-trunkY).magnitude-trunkRadius;
                     shape=Join(shape,trunk,.015f);
                     float outline=Mathf.Clamp01((.0022f-Mathf.Abs(trunk))*1200+.5f);
                     Layer(ref face,ink,outline*Mathf.Clamp01((.730f-y)/.029f));
-                    Fill(ref face,E(x,y,.487f,.514f,.007f,.008f),ink);
-                    Fill(ref face,E(x,y,.513f,.514f,.007f,.008f),ink);
+                    Fill(ref face,E(x,y,.532f,.514f,.007f,.008f),ink);
+                    Fill(ref face,E(x,y,.558f,.514f,.007f,.008f),ink);
                     break;
                 case 6: // Triceratops: scalloped frill, two brow horns and one nose horn.
                     float frill=E(x,y,.5f,.797f,.302f,.151f);

@@ -61,8 +61,12 @@ namespace PeacePark
             var camera=park.OrbitCamera.GetComponent<Camera>();
             Require(camera.cullingMask!=0&&park.OrbitCamera.InputEnabled, "The host park is not rendered or controllable.");
             park.OpenSettings();
+            string address=park.Lan.LocalIPv4();
+            Require(address=="—"||(IPAddress.TryParse(address,out var ip)&&
+                ip.AddressFamily==System.Net.Sockets.AddressFamily.InterNetwork&&!IPAddress.IsLoopback(ip)),
+                "Settings must show a single device IPv4 address when available.");
             Require(park.IsSettingsOpen&&park.IsViewingPark&&park.Lan.IsHosting&&camera.cullingMask!=0&&
-                !park.OrbitCamera.InputEnabled&&park.Lan.HostAddresses.Contains("127.0.0.1"), "Park information did not open over the live park.");
+                !park.OrbitCamera.InputEnabled, "Park information did not open over the live park.");
             park.CloseDialog();
             Require(!park.IsSettingsOpen&&park.OrbitCamera.InputEnabled, "Closing settings did not restore camera controls.");
             park.OpenVenuePicker();
@@ -126,12 +130,12 @@ namespace PeacePark
             Debug.Log("DISCOVERY PASS: a UDP reply located the host and the existing TCP connection opened drawing.");
             Require(camera.cullingMask == 0 && !camera.allowMSAA,
                 "The coloring client is still rendering the park.");
-            Require(park.Toast.Message=="놀이 공간에 연결됐어요","Remote drawing did not show its connection toast.");
+            Require(park.Toast.Message==ParkLanguage.Text("놀이 공간에 연결됐어요"),"Remote drawing did not show its connection toast.");
             Paint(park.Drawing, RedFor(AnimalKind.Rabbit));
             Require(park.Drawing.ApplyDrawing() && !park.Drawing.ApplyDrawing(), "Apply or cooldown failed.");
             yield return WaitFor(() => park.Lan.LastSendAccepted);
             Require(park.SubmissionCount == 0 && park.IsDrawing, "Client created an animal locally.");
-            Require(park.Toast.Message?.StartsWith("놀이 공간에 보냈어요!")==true,
+            Require(park.Toast.Message==ParkLanguage.Text("놀이 공간에 보냈어요! 새 동물을 색칠해 보세요"),
                 "An acknowledged drawing did not show a toast.");
             float toastStart=Time.unscaledTime;
             yield return new WaitForSecondsRealtime(2.5f);

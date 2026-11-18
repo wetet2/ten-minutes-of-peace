@@ -75,7 +75,8 @@ Shader "PeacePark/RabbitPaint"
                 }
                 if(_Species == 4 || _Species == 5)
                 {
-                    if(p.z>.63 && p.y<(_Species==4?.91:1.01))return .83;
+                    if(_Species==4 && p.z>.63 && p.y<.69)return .95*(1-smoothstep(.62,.69,p.y));
+                    if(_Species==5 && p.z>.63 && p.y<.79)return .83;
                     if(_Species != 4)return 0;
                     if(p.y>4.89)return smoothstep(4.89,4.95,p.y)*.95;
                     if(p.y<2.48 || p.y>3.64)return 0;

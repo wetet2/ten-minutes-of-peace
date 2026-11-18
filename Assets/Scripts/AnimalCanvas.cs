@@ -176,11 +176,14 @@ namespace PeacePark
                     float hippoTailX=.506f+(.302f-y)*.30f;
                     return Merge(E(x,y,hippoTailX,.302f,.016f,.041f),
                         E(x,y,.520f,.265f,.013f,.016f),.009f);
-                case AnimalKind.Giraffe:
                 case AnimalKind.Elephant:
-                    float end=kind==AnimalKind.Giraffe?.618f:.414f;
-                    return Mathf.Min(Capsule(x,y,new Vector2(.50f,.35f),new Vector2(end,.245f),.012f),
-                        E(x,y,end,.237f,.021f,.026f));
+                    return Merge(Capsule(x,y,new Vector2(.50f,.35f),new Vector2(.55f,.205f),.010f),
+                        E(x,y,.55f,.201f,.016f,.024f),.004f);
+                case AnimalKind.Giraffe:
+                    float drop=Mathf.Clamp01((.26f-y)/.17f);
+                    float shaftX=.5f+.045f*drop*drop;
+                    return Merge(Capsule(x,y,new Vector2(shaftX,.26f),new Vector2(shaftX,.09f),.010f),
+                        E(x,y,.558f,.077f,.018f,.026f),.006f);
                 default:return 1f;
             }
         }

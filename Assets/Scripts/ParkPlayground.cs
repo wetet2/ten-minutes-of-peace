@@ -21,7 +21,7 @@ namespace PeacePark
         public int PendingCount {get{int count=0;if(queues!=null)foreach(var queue in queues)count+=queue.Count;return count;}}
         public int SubmissionCount {get;private set;}
         public bool IsDrawing=>Drawing&&Drawing.Visible;
-        public bool IsReady=>queues!=null;
+        public bool IsReady=>queues!=null&&!startupSplash;
         readonly List<ParkRabbitAgent> animals=new List<ParkRabbitAgent>();
         ParkRabbitAgent fadingAnimal;
         float fadeRemaining;
@@ -29,7 +29,7 @@ namespace PeacePark
         Vector3[] pathPoints;
         int[] pathTriangles;
         float lawnHeight;
-        float defaultFogEnd;
+        float defaultFogStart,defaultFogEnd;
         ParkDuneTerrain duneTerrain;
         Vector2 pondCenter,pondRadii;
         Rect[] walkObstacles;
@@ -39,11 +39,15 @@ namespace PeacePark
         bool parkUsesMsaa;
         internal ParkToast Toast {get;private set;}
         GUIStyle title,button;
-        Texture2D venueTriangle,settingsIcon;
+        Texture2D venueTriangle,settingsIcon,cameraIcon;
+        bool menuCollapsed;
+        float menuVisibility=1;
+        int dialogClosedFrame=-1;
         readonly DrawingSkin skin=new DrawingSkin();
         ParkLanPanel lan;
         ParkMusic music;
         ParkWelcome welcome;
+        PoriSplash startupSplash;
         ParkDialogs dialogs;
         enum View { ModeSelection, Park, Drawing }
         enum Dialog { None, Connection, Settings, Venues }
@@ -74,8 +78,10 @@ namespace PeacePark
 #endif
             if(!Drawing)Drawing=FindAnyObjectByType<DrawingPage>();
             if(!OrbitCamera)OrbitCamera=FindAnyObjectByType<ParkCamera>();
+            if(OrbitCamera)OrbitCamera.SetPark(this);
             music=new ParkMusic(gameObject);
             defaultFogEnd=RenderSettings.fogEndDistance;
+            defaultFogStart=RenderSettings.fogStartDistance;
             parkCamera=OrbitCamera?OrbitCamera.GetComponent<Camera>():Camera.main;
             if(parkCamera)
             {
@@ -111,6 +117,8 @@ namespace PeacePark
             Drawing.Toast=Toast;
             RabbitCharacter.ConfigurePaintShader(RabbitPaintShader);
             SetView(View.ModeSelection);
+            startupSplash = PoriSplash.Play(transform, () => welcome.SetVisible(true));
+            if (startupSplash) welcome.SetVisible(false);
         }
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         // Unity removes filename punctuation from the standalone product name.
@@ -122,7 +130,7 @@ namespace PeacePark
             {
                 GetWindowThreadProcessId(window,out uint owner);
                 if(owner!=process.Id)continue;
-                SetWindowTextW(window,"유아용 게임: 십분의 평화");
+                SetWindowTextW(window,ParkLanguage.Title);
                 return;
             }
         }
@@ -157,6 +165,7 @@ namespace PeacePark
             if(parkCamera)parkCamera.backgroundColor=venue.Sky;
             RenderSettings.fogColor=venue.Sky;
             RenderSettings.fogEndDistance=venue.FogEnd>0?venue.FogEnd:defaultFogEnd;
+            RenderSettings.fogStartDistance=venue.FogStart>0?venue.FogStart:defaultFogStart;
             if(IsViewingPark)music.PlayVenue(themeName);
         }
         internal ParkSlide Slide {get;private set;}
@@ -247,7 +256,7 @@ namespace PeacePark
             if(house>=queues.Length)return false;
             var submission=new Submission{Id=++SubmissionCount,Kind=kind,Front=front,Back=back,Raw=raw};
             queues[house].Enqueue(submission);
-            Toast.Show(Houses[house].DisplayName+"에서 "+AnimalKinds.Name(kind)+" 친구가 나와요!");
+            Toast.Show(ParkLanguage.Arrival(Houses[house].DisplayName,kind));
             return true;
         }
         void OnApplied(int animal,byte[] front,byte[] back)
@@ -264,13 +273,13 @@ namespace PeacePark
         }
         internal bool ChooseHostMode()
         {
-            if(!IsSelectingMode||IsConnecting||!lan.StartHost())return false;
+            if(!IsReady||!IsSelectingMode||IsConnecting||!lan.StartHost())return false;
             ShowPark();
             return true;
         }
         internal void ChooseDrawingMode()
         {
-            if(!IsSelectingMode||IsConnecting)return;
+            if(!IsReady||!IsSelectingMode||IsConnecting)return;
             Toast.Clear();
             SetDialog(Dialog.Connection);
         }
@@ -292,6 +301,7 @@ namespace PeacePark
         }
         void SetDialog(Dialog next)
         {
+            if(dialog!=Dialog.None&&next==Dialog.None)dialogClosedFrame=Time.frameCount;
             if(IsSettingsOpen&&next!=Dialog.Settings)music.SaveVolume();
             dialog=next;
             welcome.SetModalOpen(IsConnecting);
@@ -306,6 +316,7 @@ namespace PeacePark
         }
         void SetView(View next)
         {
+            if(next!=View.Park&&OrbitCamera)OrbitCamera.CancelAnimalFollow(true);
             view=next;
             CloseDialog();
             welcome.SetVisible(next==View.ModeSelection);
@@ -349,6 +360,7 @@ namespace PeacePark
         }
         void Update()
         {
+            menuVisibility=Mathf.MoveTowards(menuVisibility,menuCollapsed?0:1,Time.unscaledDeltaTime*6);
             lan?.Update();
             music?.Advance(Time.unscaledDeltaTime);
             if(Input.GetKeyDown(KeyCode.Escape))
@@ -407,6 +419,9 @@ namespace PeacePark
             fadingAnimal=oldest;
             fadeRemaining=AnimalFadeDuration;
         }
+        internal bool CanFollowAnimal(ParkRabbitAgent animal)=>animal&&animal!=fadingAnimal&&
+            animal.gameObject.activeInHierarchy&&animal.Character&&animal.Character.Skin.enabled&&
+            animals.Contains(animal);
         void AdvanceFade(float deltaTime)
         {
             if(!fadingAnimal)return;
@@ -425,37 +440,75 @@ namespace PeacePark
             button=new GUIStyle(title){fontSize=25};button.normal.textColor=Color.white;
             venueTriangle=CreateVenueTriangle(title.normal.textColor);
             settingsIcon=CreateSettingsIcon();
+            cameraIcon=Resources.Load<Texture2D>("CameraViewReset");
         }
         void OnGUI()
         {
-            if(lan==null||!IsViewingPark||dialog!=Dialog.None)return;
+            if(lan==null||!IsViewingPark||dialog!=Dialog.None||Time.frameCount==dialogClosedFrame)return;
             var area=Screen.safeArea;
             if(area.width<=0||area.height<=0)return;
             var old=GUI.matrix;
-            float scale=Mathf.Min(area.height/900f,area.width/665f),width=area.width/scale;
+            float scale=HudScale(area),width=area.width/scale;
             GUI.matrix=old*Matrix4x4.TRS(new Vector3(area.xMin,Screen.height-area.yMax),Quaternion.identity,new Vector3(scale,scale,1));
             Styles();
-            float themeWidth=Mathf.Max(125,title.CalcSize(new GUIContent(ThemeName)).x+42);
+            if(menuVisibility>0)
+            {
+                GUI.BeginGroup(new Rect(0,0,width-80,84));
+                GUI.BeginGroup(new Rect(0,-84*(1-Mathf.SmoothStep(0,1,menuVisibility)),width,84));
+                bool wasEnabled=GUI.enabled;
+                GUI.enabled=wasEnabled&&!menuCollapsed;
+                DrawMenu(width);
+                GUI.enabled=wasEnabled;
+                GUI.EndGroup();
+                GUI.EndGroup();
+            }
+            var handle=new Rect(width-76,18,60,60);
+            skin.Draw(handle,new Color32(255,247,226,255),27);
+            GUI.DrawTextureWithTexCoords(new Rect(handle.center.x-10,handle.center.y-7,20,14),venueTriangle,
+                menuCollapsed?new Rect(0,0,1,1):new Rect(0,1,1,-1));
+            if(GUI.Button(new Rect(width-80,0,80,82),new GUIContent("",ParkLanguage.Text(menuCollapsed?"메뉴 펼치기":"메뉴 접기")),GUIStyle.none))
+                menuCollapsed=!menuCollapsed;
+            GUI.matrix=old;
+        }
+        static float HudScale(Rect area)=>Mathf.Min(area.height/900f,area.width/665f);
+        internal bool ToolbarContains(Vector2 screenPoint)
+        {
+            var area=Screen.safeArea;
+            float scale=HudScale(area);
+            if(screenPoint.y<area.yMax-84*scale)return false;
+            return menuVisibility>0 || screenPoint.x>=area.xMax-80*scale;
+        }
+        void DrawMenu(float width)
+        {
+            string themeLabel=ParkLanguage.Text(ThemeName);
+            float themeWidth=Mathf.Min(width-465,Mathf.Max(125,title.CalcSize(new GUIContent(themeLabel)).x+42));
             var place=new Rect(8,18,themeWidth,60);
             if(CanChooseVenue)
             {
-                if(HudButton(place,ThemeName+"   "))OpenVenuePicker();
+                if(HudButton(place,themeLabel+"   "))OpenVenuePicker();
                 if(Event.current.type==EventType.Repaint)
                     GUI.DrawTexture(new Rect(place.xMax-30,place.center.y-5,14,10),venueTriangle);
             }
-            else GUI.Label(place,ThemeName,title);
-            if(HudButton(new Rect(width-487,18,158,60),"카메라 초기화")&&OrbitCamera)OrbitCamera.ResetView();
-            if(HudButton(new Rect(width-316,18,224,60),"동물 색칠하기",true))ShowDrawing();
-            var settingsButton=new Rect(width-80,18,60,60);
-            skin.Draw(settingsButton,new Color32(255,247,226,255),27);
-            GUI.DrawTexture(new Rect(settingsButton.center.x-17,settingsButton.center.y-17,34,34),settingsIcon);
-            if(GUI.Button(settingsButton,new GUIContent("", "설정"),GUIStyle.none))OpenSettings();
-            GUI.matrix=old;
+            else GUI.Label(place,themeLabel,title);
+            if(HudButton(new Rect(width-450,18,222,60),"동물 색칠하기",true))ShowDrawing();
+            if(IconButton(new Rect(width-216,18,60,60),cameraIcon,48,"카메라 초기화")&&OrbitCamera)OrbitCamera.ResetView();
+            if(IconButton(new Rect(width-146,18,60,60),settingsIcon,34,"설정"))OpenSettings();
+        }
+        bool IconButton(Rect rect,Texture2D icon,float size,string hint)
+        {
+            skin.Draw(rect,new Color32(255,247,226,255),27);
+            GUI.DrawTexture(new Rect(rect.center.x-size/2,rect.center.y-size/2,size,size),icon);
+            return GUI.Button(rect,new GUIContent("",ParkLanguage.Text(hint)),GUIStyle.none);
         }
         bool HudButton(Rect rect,string text,bool accent=false)
         {
             skin.Draw(rect,accent?new Color32(104,193,66,255):new Color32(255,247,226,255),27,accent);
-            GUI.Label(rect,text,accent?button:title);
+            var style=accent?button:title;
+            text=ParkLanguage.Text(text);
+            int previousSize=style.fontSize;
+            while(style.fontSize>12&&style.CalcSize(new GUIContent(text)).x>rect.width-18)style.fontSize--;
+            GUI.Label(rect,text,style);
+            style.fontSize=previousSize;
             return GUI.Button(rect,GUIContent.none,GUIStyle.none);
         }
         static Texture2D CreateVenueTriangle(Color32 color)

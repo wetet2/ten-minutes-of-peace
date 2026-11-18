@@ -4,6 +4,8 @@ Shader "PeacePark/Storybook"
     {
         _Color("Paint color",Color)=(1,1,1,1)
         _Shade("Shade tint",Color)=(.62,.76,.69,1)
+        _ShadowFloor("Shadow brightness",Range(0,1))=.7
+        _ShadowFadeDistance("Distant shadow fade",Float)=0
         _Variation("World variation",Range(0,.1))=0
         _GrassDetail("Grass detail",Range(0,.3))=0
         [HideInInspector] _AnimalVisibility("Animal visibility",Range(0,1))=1
@@ -23,7 +25,7 @@ Shader "PeacePark/Storybook"
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
             #include "AnimalFade.cginc"
-            fixed4 _Color,_Shade;float _Variation,_GrassDetail;
+            fixed4 _Color,_Shade;float _Variation,_GrassDetail,_ShadowFloor,_ShadowFadeDistance;
             struct appdata {float4 vertex:POSITION;float3 normal:NORMAL;};
             struct v2f {float4 pos:SV_POSITION;float3 normal:TEXCOORD0;float3 world:TEXCOORD1;SHADOW_COORDS(2) float viewDepth:TEXCOORD3;float4 screen:TEXCOORD4;};
             v2f vert(appdata v)
@@ -56,7 +58,10 @@ Shader "PeacePark/Storybook"
                 float diffuse=dot(normalize(i.normal),normalize(_WorldSpaceLightPos0.xyz));
                 float wrap=smoothstep(-.15,.95,diffuse);
                 fixed3 lighting=lerp(_Shade.rgb,fixed3(1.05,1.035,1),wrap);
-                lighting*=lerp(.7,1,SHADOW_ATTENUATION(i));
+                float shadow=SHADOW_ATTENUATION(i);
+                if(_ShadowFadeDistance>0)
+                    shadow=lerp(shadow,1,smoothstep(_ShadowFadeDistance*.75,_ShadowFadeDistance,i.viewDepth));
+                lighting*=lerp(_ShadowFloor,1,shadow);
                 float variation=sin(i.world.x*.19+sin(i.world.z*.17))*sin(i.world.z*.23+i.world.x*.07)*_Variation;
                 if(_GrassDetail>0)
                 {

@@ -125,7 +125,7 @@ namespace PeacePark
             var grid=new Rect(automatic.x,palette.y+15,automatic.width,automatic.y-palette.y-29);
             DrawPalette(grid);
             skin.Draw(automatic,new Color32(218,199,246,255),26,true);
-            GUI.Label(automatic,"자동",title);
+            GUI.Label(automatic,ParkLanguage.Text("자동"),title);
             GUI.enabled=!Sending;
             if(GUI.Button(automatic,GUIContent.none,GUIStyle.none))AutoFill();
             GUI.enabled=true;
@@ -141,13 +141,13 @@ namespace PeacePark
             }
             float cw=width-left-right-10;Panel(new Rect(left,182,cw,700),Color.white,34);
             float half=cw/2;
-            GUI.Label(new Rect(left,195,half,50),"앞모습",title);GUI.Label(new Rect(left+half,195,half,50),"뒷모습",title);
+            GUI.Label(new Rect(left,195,half,50),ParkLanguage.Text("앞모습"),title);GUI.Label(new Rect(left+half,195,half,50),ParkLanguage.Text("뒷모습"),title);
             var frontRect=Fit(new Rect(left+8,245,half-16,580));var backRect=Fit(new Rect(left+half+8,245,half-16,580));
             Canvas(frontRect,Front);Canvas(backRect,Back);
             var apply=new Rect(brushPanel.x,brushPanel.yMax+12,brushPanel.width,96);
             skin.Draw(apply,RemainingLock>0||Sending?new Color32(197,211,179,255):new Color32(116,211,33,255),38,true);
             var old=button.normal.textColor;button.normal.textColor=Color.white;button.fontSize=Sending?24:36;
-            GUI.Label(apply,Sending?"보내는 중":RemainingLock>0?Mathf.CeilToInt(RemainingLock)+"초":"보내기",button);button.normal.textColor=old;
+            GUI.Label(apply,Sending?ParkLanguage.Text("보내는 중"):RemainingLock>0?Mathf.CeilToInt(RemainingLock)+(ParkLanguage.IsKorean?"초":"s"):ParkLanguage.Text("보내기"),button);button.normal.textColor=old;
             GUI.enabled=RemainingLock<=0&&!Sending;if(GUI.Button(apply,GUIContent.none,GUIStyle.none))ApplyDrawing();GUI.enabled=true;
             Toast?.DrawOverColoring();
             HandlePaint(Event.current,frontRect,backRect);
@@ -206,7 +206,11 @@ namespace PeacePark
                     GUI.DrawTextureWithTexCoords(new Rect(art.center.x-iw/2,art.center.y-ih/2,iw,ih),headAtlas,
                         new Rect(bounds.x/2172f,1-bounds.yMax/724f,bounds.width/2172f,bounds.height/724f));
                 }
-                GUI.Label(new Rect(card.x,card.y+108,card.width,28),AnimalKinds.Name((AnimalKind)i),navigation);
+                string name=AnimalKinds.Name((AnimalKind)i);
+                int previousSize=navigation.fontSize;
+                while(navigation.fontSize>12&&navigation.CalcSize(new GUIContent(name)).x>card.width-8)navigation.fontSize--;
+                GUI.Label(new Rect(card.x,card.y+108,card.width,28),name,navigation);
+                navigation.fontSize=previousSize;
             }
             GUI.EndGroup();
             if(maxScroll>0&&Event.current.type==EventType.Repaint)

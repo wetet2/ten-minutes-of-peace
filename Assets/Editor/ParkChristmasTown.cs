@@ -8,19 +8,24 @@ namespace PeacePark.Editor
 {
     internal sealed class ParkChristmasTown
     {
+        const float FrontShopLine = -32f;
         readonly Mesh cube = PrimitiveMesh(PrimitiveType.Cube);
         readonly Mesh cylinder = PrimitiveMesh(PrimitiveType.Cylinder);
         readonly Mesh hippedRoof = HippedRoof();
         readonly Mesh dome = Dome();
         readonly Mesh arcade = ParkGeometry.Arch(1,1.69f,.12f);
+        readonly Material iron=Paint("Wrought iron","#423D44");
+        readonly Material wood=Paint("Walnut front doors","#78503B");
+        readonly Material greenDoor=Paint("Painted olive doors","#50675D");
+        readonly Material fittings=Paint("Brushed brass handles","#D3A35F");
         readonly System.Random random = new System.Random(41871);
         readonly Material shopLights = new Material(Shader.Find("Unlit/Color"))
             { name = "Warm shop and palazzo windows", color = new Color32(253,194,114,255) };
         readonly District[] districts =
         {
-            new District("Winter palazzi", .02f),
-            new District("Snowy terracotta rooftops", .19f),
-            new District("Distant city skyline", .34f)
+            new District(.02f),
+            new District(.19f),
+            new District(.34f)
         };
 
         internal static void Create(Transform parent) => new ParkChristmasTown().Build(parent);
@@ -28,118 +33,112 @@ namespace PeacePark.Editor
         void Build(Transform parent)
         {
             var city = Group("Winter city around the cathedral", parent, Vector3.zero);
+            BuildDistrictGrid(city);
             BuildCourtyard(city);
-            float[] depths = { 44, 55, 66, 77, 88, 99, 111, 124, 137, 150, 163 };
-            for (int row = 0; row < depths.Length; row++)
-            {
-                float z = depths[row];
-                int layer = row < 3 ? 0 : row < 7 ? 1 : 2;
-                var district = districts[layer];
-                float spacing = layer == 0 ? 9.4f : layer == 1 ? 11.4f : 13.3f;
-                int halfCount = Mathf.CeilToInt((96 + z * .91f) / spacing);
-                for (int column = -halfCount; column <= halfCount; column++)
-                {
-                    float x = (column + (row % 2 == 0 ? .24f : -.21f)) * spacing + Range(-.62f,.62f);
-                    float depth = z + Range(-.82f,.82f) + Mathf.Sin(column*.46f + row*.8f)*.88f +
-                        Mathf.Sin(x*.039f+row*.61f)*1.7f;
-                    float width = spacing * Range(.57f,.79f);
-                    float footprint = Range(5.95f,8.35f) + layer * .43f;
-                    float y = Range(4.45f,8.85f) + layer * 1.38f;
-                    var position = new Vector3(x, 0, depth);
-                    var rotation = Quaternion.Euler(0, Range(-6.6f,6.6f) + Mathf.Sin(row*.85f)*4, 0);
-                    var pieces = x < 0 ? district.West : district.East;
-
-                    // A few towers and civic domes stand above the blocks along the deeper streets.
-                    if ((row == 1 && column == -4) || (row == 3 && column == 5) ||
-                        (row == 5 && column == -7) || (row == 8 && column == 8))
-                        AddLandmark(pieces, district, position, rotation, width, footprint, y, row % 4 == 1);
-                    else
-                        AddBuilding(pieces, district, position, rotation, width, footprint, y, layer);
-                }
-            }
-
-            for (int layer = 0; layer < districts.Length; layer++)
-            {
-                var district = districts[layer];
-                var row = Group(district.Name, city, Vector3.zero);
-                BuildSide(district.West, "West", row, layer == 0);
-                BuildSide(district.East, "East", row, layer == 0);
-            }
-            BuildSideStreets(city, -1);
-            BuildSideStreets(city, 1);
         }
 
-        void BuildSideStreets(Transform parent, int side)
-        {
-            var streets = Group(side < 0 ? "West city streets" : "East city streets", parent, Vector3.zero);
-            const int bands = 17, bandsPerBatch = 3;
-            float streetX = 39.2f;
-            for (int firstBand = 0; firstBand < bands; firstBand += bandsPerBatch)
-            {
-                var pieces = new Pieces();
-                for (int band = firstBand; band < Mathf.Min(firstBand + bandsPerBatch, bands); band++)
-                {
-                    int layer = band < 3 ? 0 : band < 7 ? 1 : 2;
-                    var district = districts[layer];
-                    float spacing = 9.8f + layer * 1.35f;
-                    float streetZ = 30 - (band % 3) * .8f;
-                    // The outer streets extend farther around the square so oblique views run into fog.
-                    float frontLimit = -64 - (streetX - 39.2f) * .57f;
-                    for (int lot = 0; streetZ >= frontLimit; lot++)
-                    {
-                        float x = side * (streetX + Range(-.57f, .57f));
-                        float z = streetZ + Range(-.45f, .45f);
-                        float width = spacing * Range(.64f, .80f);
-                        float depth = Range(6.2f, 8.1f) + layer * .5f;
-                        float height = Range(4.5f, 8.9f) + layer * 1.1f;
-                        var point = new Vector3(x, 0, z);
-                        var orientation = Quaternion.Euler(0, side * 90 + Range(-5f, 5f), 0);
-                        if ((band == 1 && lot == 3) || (band == 4 && lot == (side < 0 ? 6 : 2)))
-                            AddLandmark(pieces, district, point, orientation, width, depth, height, side < 0);
-                        else
-                            AddBuilding(pieces, district, point, orientation, width, depth, height, layer);
+        const float SquareSide=22.35f, SquareRear=32.45f;
+        const float MainStreetX=36f, BlockWidth=25f, BlockDepth=21f;
+        const int ColumnsPerSide=9, RowsPerSide=8;
 
-                        // Leave cross streets between groups of four buildings.
-                        streetZ -= spacing + (lot % 4 == 3 ? 2.7f : 0);
+        // The innermost streets are wider apart to make room for the square and its frontage.
+        static float StreetX(int i)=>i==0 ? 0 : Mathf.Sign(i)*(MainStreetX+(Mathf.Abs(i)-1)*BlockWidth);
+
+        void BuildDistrictGrid(Transform city)
+        {
+            var grid=Group("Residential blocks and lanes",city,Vector3.zero);
+            var pavement=Paint("Residential stone sidewalks","#D6C4C4");
+            var ground=new Pieces();
+            float edge=StreetX(ColumnsPerSide),end=RowsPerSide*BlockDepth;
+            var cobbles=new Material(Shader.Find("PeacePark/Winter Cobbles")){name="Old town granite setts"};
+            Street(-edge,edge,-end,FrontShopLine);
+            Street(-edge,edge,SquareRear,end);
+            Street(-edge,-SquareSide,FrontShopLine,SquareRear);
+            Street(SquareSide,edge,FrontShopLine,SquareRear);
+            ground.Build(Group("Connected cobbled street bed",grid,Vector3.zero));
+
+            for(int row=-RowsPerSide;row<RowsPerSide;row++)
+            for(int first=-ColumnsPerSide;first<ColumnsPerSide;first+=3)
+            {
+                var blocks=new Pieces();
+                bool nearby=false;
+                for(int col=first;col<first+3;col++)
+                {
+                    if((col==-1||col==0)&&row>=-2&&row<2)continue;
+                    float left=StreetX(col),right=StreetX(col+1),bottom=row*BlockDepth;
+                    float x=(left+right)/2,z=bottom+BlockDepth/2;
+                    float distance=Mathf.Max(Mathf.Abs(x),Mathf.Abs(z));
+                    int layer=distance<74 ? 0 : distance<115 ? 1 : 2;
+                    nearby|=layer==0;
+                    // Each block is one raised island. Neighbours leave half a street on either side.
+                    float w=right-left-4.4f,d=BlockDepth-3.8f;
+                    blocks.Add(cube,pavement,new Vector3(x,.06f,z),new Vector3(w,.12f,d));
+                    bool alongX=(row+col)%3!=0;
+                    float span=(alongX?w:d)-2.5f;
+                    float depth=((alongX?d:w)-3.2f)/2;
+                    int lots=Mathf.Max(2,Mathf.RoundToInt(span/8.4f));
+                    for(int side=-1;side<=1;side+=2)
+                    for(int lot=0;lot<lots;lot++)
+                    {
+                        float offset=((lot+.5f)/lots-.5f)*span;
+                        var point=alongX?new Vector3(x+offset,0,z+side*depth/2):new Vector3(x+side*depth/2,0,z+offset);
+                        var facing=Quaternion.Euler(0,alongX?(side<0?0:180):-side*90,0);
+                        float width=span/lots-.38f,height=Range(5.3f,9.2f)+layer*.88f;
+                        if(lot==0&&side==1&&Mathf.Abs(row)%5==3&&Mathf.Abs(col)%4==2)
+                            AddLandmark(blocks,districts[layer],point,facing,width,depth-.46f,height,col%2==0);
+                        else
+                            AddBuilding(blocks,districts[layer],point,facing,width,depth-.46f,height,layer);
                     }
-                    streetX += 11.2f + layer * 1.35f;
                 }
-                BuildSide(pieces, $"Street blocks {firstBand / bandsPerBatch + 1}", streets, firstBand == 0);
+                BuildSide(blocks,$"Blocks {first}, {row}",grid,nearby);
+            }
+
+            void Street(float left,float right,float bottom,float top)
+            {
+                ground.Add(cube,cobbles,new Vector3((left+right)/2,.002f,(bottom+top)/2),
+                    new Vector3(right-left,.008f,top-bottom));
             }
         }
 
         void BuildCourtyard(Transform parent)
         {
-            const float sideFront = 22.35f, sideStart = -18.20f, rearFront = 32.45f;
-            const float sideEnd = 31.45f, span = sideEnd-sideStart;
-            const int blocks = 7;
-            var court = Group("Palazzi surrounding the open square",parent,Vector3.zero);
-            var district = districts[0];
-            foreach (int side in new[] {-1,1})
+            var court=Group("Homes facing the cathedral square",parent,Vector3.zero);
+            foreach(int side in new[]{-1,1})
             {
-                var pieces = new Pieces();
-                var rotation = Quaternion.Euler(0,90*side,0);
-                for (int i = 0; i < blocks; i++)
+                var houses=new Pieces();
+                var facing=Quaternion.Euler(0,90*side,0);
+                // The openings in both frontages line up with the three east-west lanes.
+                float[] ends={-29.8f,-23.1f,-18.9f,-2.1f,2.1f,18.9f,23.1f,29.8f};
+                int index=0;
+                for(int pair=0;pair<ends.Length;pair+=2)
                 {
-                    float width = span/blocks;
-                    float depth = Range(6.48f,7.38f);
-                    var point = new Vector3(side*(sideFront+depth/2),0,sideStart+(i+.5f)*width);
-                    AddPalazzo(pieces,district,point,rotation,width-.05f,depth,i,side>0 ? 1 : 0);
+                    float length=ends[pair+1]-ends[pair];
+                    int count=Mathf.RoundToInt(length/8);
+                    for(int lot=0;lot<count;lot++,index++)
+                    {
+                        float depth=Range(6.5f,7.2f),width=length/count;
+                        var point=new Vector3(side*(SquareSide+depth/2),0,ends[pair]+(lot+.5f)*width);
+                        AddPalazzo(houses,districts[0],point,facing,width-.30f,depth,index,side+1);
+                    }
                 }
-                BuildSide(pieces,side<0 ? "West square frontage" : "East square frontage",court,true);
+                BuildSide(houses,side<0?"West residences":"East residences",court,true);
             }
-
-            var rear = new Pieces();
-            const int rearBlocks = 6;
-            const float rearWidth = 44f/rearBlocks;
-            for (int i = 0; i < rearBlocks; i++)
+            foreach(int side in new[]{-1,1})
             {
-                float depth = Range(6.45f,7.58f);
-                var point = new Vector3((i+.5f-rearBlocks/2f)*rearWidth,0,rearFront+depth/2);
-                AddPalazzo(rear,district,point,Quaternion.identity,rearWidth-.05f,depth,i,2);
+                var houses=new Pieces();
+                var facing=Quaternion.Euler(0,side<0?180:0,0);
+                float line=side<0?FrontShopLine:SquareRear;
+                for(int half=-1;half<=1;half+=2)
+                for(int lot=0;lot<4;lot++)
+                {
+                    const float width=7.2f;
+                    float depth=Range(6.3f,7.05f);
+                    var point=new Vector3(half*(2.5f+(lot+.5f)*width),0,line+side*depth/2);
+                    AddPalazzo(houses,districts[0],point,facing,width-.30f,depth,lot,side+2);
+                }
+                BuildSide(houses,side<0?"South residences":"North residences",court,true);
             }
-            BuildSide(rear,"Rear frontage and street corners",court,true);
-            BuildCourtyardLanes(court,sideFront,sideStart,rearFront);
+            BuildCourtyardLanes(court,SquareSide,-18.2f,SquareRear);
         }
 
         void AddPalazzo(Pieces pieces, District district, Vector3 point, Quaternion orientation, float width, float depth,
@@ -166,18 +165,24 @@ namespace PeacePark.Editor
 
             const int bays=4;
             float bayWidth=width/bays;
-            for (int bay=0;bay<bays;bay++)
-            {
-                float x=(bay+.5f-bays/2f)*bayWidth;
-                Add(arcade,district.DarkWindow,new Vector3(x,.064f,front-.195f),new Vector3(bayWidth*.79f,1.31f,1));
-                Add(arcade,shopLights,new Vector3(x,.17f,front-.274f),new Vector3(bayWidth*.59f,1.09f,.65f));
-                Box(district.DarkWindow,new Vector3(x,1.026f,front-.338f),new Vector3(.06f,1.70f,.07f));
-                Box(district.DarkWindow,new Vector3(x,1.34f,front-.337f),new Vector3(bayWidth*.59f,.058f,.08f));
-                Box(stone,new Vector3(x-bayWidth*.493f,1.24f,front-.23f),new Vector3(.15f,2.48f,.24f));
-            }
+            AddEntrance(pieces,district,point,orientation,width,front-.18f,index+row);
 
             int floors=height>7.65f ? 3 : 2;
             float floor=(height-3.11f)/floors;
+            // The return walls are exposed at the alley mouths; the rear faces the next street.
+            for(int level=0;level<=floors;level++)
+            {
+                float y=level==0?1.55f:3.06f+(level-.51f)*floor;
+                for(int bay=0;bay<3;bay++)
+                {
+                    float x=(bay-1)*width*.29f;
+                    if(level==0 && bay==1)Box(wood,new Vector3(x,1.04f,depth/2+.05f),new Vector3(1.18f,2.08f,.13f));
+                    else Box(district.DarkWindow,new Vector3(x,y,depth/2+.05f),new Vector3(.78f,1.06f,.12f));
+                }
+                for(int side=-1;side<=1;side+=2)
+                for(int bay=-1;bay<=1;bay+=2)
+                    Box(district.DarkWindow,new Vector3(side*(width*.5f+.026f),y,bay*depth*.25f),new Vector3(.062f,1.04f,.70f));
+            }
             for (int level=0;level<floors;level++)
             for (int bay=0;bay<bays;bay++)
             {
@@ -186,8 +191,8 @@ namespace PeacePark.Editor
                 float w=bayWidth*.46f,h=floor*.65f;
                 Box(district.Cornice,new Vector3(x,y,front-.044f),new Vector3(w+.16f,h+.14f,.16f));
                 Box((index+bay+level)%6==0?shopLights:district.DarkWindow,new Vector3(x,y,front-.149f),new Vector3(w,h,.082f));
-                Box(tiles,new Vector3(x-w*.31f,y,front-.207f),new Vector3(w*.16f,h,.046f));
-                Box(tiles,new Vector3(x+w*.31f,y,front-.207f),new Vector3(w*.16f,h,.046f));
+                    Box(tiles,new Vector3(x-w*.63f,y,front-.14f),new Vector3(w*.20f,h,.06f));
+                    Box(tiles,new Vector3(x+w*.63f,y,front-.14f),new Vector3(w*.20f,h,.06f));
                 Box(district.Cornice,new Vector3(x,y-h*.56f,front-.163f),new Vector3(w+.23f,.084f,.27f));
                 if(level==0 && (index+bay)%4==0)
                     Box(district.Cornice,new Vector3(x,y-h*.65f,front-.275f),new Vector3(w+.36f,.093f,.45f));
@@ -195,6 +200,47 @@ namespace PeacePark.Editor
 
             void Box(Material material,Vector3 at,Vector3 scale) => Add(cube,material,at,scale);
             void Add(Mesh mesh,Material material,Vector3 at,Vector3 scale) => pieces.Add(mesh,material,point+orientation*at,scale,orientation);
+        }
+
+        void AddEntrance(Pieces pieces,District district,Vector3 point,Quaternion facing,float width,float front,int variant)
+        {
+            var door=variant%3==0?greenDoor:wood;
+            float entryX=(variant%3-1)*width*.105f;
+            void Place(Mesh mesh,Material mat,float x,float y,float z,float w,float h,float d)=>
+                pieces.Add(mesh,mat,point+facing*new Vector3(x,y,front+z),new Vector3(w,h,d),facing);
+            void Box(Material mat,float x,float y,float z,float w,float h,float d)=>Place(cube,mat,x,y,z,w,h,d);
+
+            Place(arcade,district.Cornice,entryX,.09f,-.10f,1.72f,1.47f,1.5f);
+            Place(arcade,shopLights,entryX,.14f,-.20f,1.40f,1.32f,.8f);
+            Box(door,entryX,1.03f,-.26f,1.43f,1.84f,.10f);
+            Box(district.Cornice,entryX,.11f,-.36f,1.77f,.22f,.78f);
+            for(int side=-1;side<=1;side+=2)
+            {
+                float leafX=entryX+side*.34f;
+                Box(district.DarkWindow,leafX,1.37f,-.323f,.48f,.73f,.035f);
+                Box(door,leafX,1.37f,-.349f,.40f,.64f,.028f);
+                Box(door,leafX,.59f,-.324f,.50f,.44f,.05f);
+                Box(fittings,entryX+side*.115f,.96f,-.37f,.043f,.18f,.085f);
+
+                float outer=side*(width/2-.25f),inner=entryX+side*1.08f;
+                float center=(outer+inner)/2,span=Mathf.Abs(outer-inner);
+                float windowWidth=Mathf.Min(1.55f,span*.77f);
+                Box(district.DarkWindow,center,1.54f,-.08f,windowWidth+.16f,1.57f,.14f);
+                Box((variant+side)%3==0?shopLights:district.WarmWindow,center,1.54f,-.164f,windowWidth,1.38f,.06f);
+                Box(district.Cornice,center,.79f,-.21f,windowWidth+.28f,.15f,.42f);
+                // Two shallow iron enclosures frame the opening. The stone step stays accessible.
+                Box(district.Cornice,center,.115f,-.53f,span+.08f,.23f,1.0f);
+                Box(iron,center,.77f,-.99f,span+.08f,.065f,.072f);
+                Box(iron,center,.34f,-.99f,span,.040f,.045f);
+                int spaces=Mathf.Max(3,Mathf.CeilToInt(span/.25f));
+                for(int i=0;i<=spaces;i++)
+                {
+                    bool post=i==0||i==spaces;
+                    float x=Mathf.Lerp(inner,outer,i/(float)spaces);
+                    Box(iron,x,post?.56f:.51f,-.99f,post?.083f:.037f,post?.77f:.60f,post?.085f:.04f);
+                    if(post)Box(iron,x,.77f,-.55f,.062f,.065f,.87f);
+                }
+            }
         }
 
         void BuildCourtyardLanes(Transform parent,float sideFront,float start,float rearFront)
@@ -208,6 +254,12 @@ namespace PeacePark.Editor
             Surface(-sideFront,-inner,start,rearFront);
             Surface(inner,sideFront,start,rearFront);
             Surface(-inner,inner,26.36f,rearFront);
+            // Connect the existing approach to the arcades without layering tile surfaces.
+            Surface(-1.70f,1.70f,FrontShopLine+3,-15.325f);
+            Surface(-sideFront,-inner,FrontShopLine+3,start);
+            Surface(inner,sideFront,FrontShopLine+3,start);
+            Surface(-sideFront,sideFront,FrontShopLine,FrontShopLine+3);
+
             pieces.Build(root);
 
             void Surface(float left,float right,float front,float back)
@@ -272,7 +324,7 @@ namespace PeacePark.Editor
             float front = -depth/2;
             for (int floor = 0; floor < floors; floor++)
             {
-                if (layer != 0 && floor == 0) continue;
+                if (floor == 0) continue;
                 float top = (floor+.57f)*floorHeight;
                 for (int window = 0; window < windows; window++)
                 {
@@ -294,10 +346,13 @@ namespace PeacePark.Editor
             }
             if (layer == 0)
             {
-                var door = new Vector3(0,floorHeight*.28f,front-.12f);
-                AddBox(district.DarkWindow,door,new Vector3(width*.17f,floorHeight*.56f,.12f));
+                AddEntrance(pieces,district,position,yaw,width,front,random.Next(6));
                 for (int side = -1; side <= 1; side += 2)
                     AddBox(district.Cornice,new Vector3(side*(width*.5f-.09f),height*.49f,front-.03f),new Vector3(.19f,height*.98f,.20f));
+            }
+            else
+            {
+                AddBox(wood,new Vector3(0,1.06f,front-.07f),new Vector3(1.24f,2.12f,.14f));
             }
 
             void AddBox(Material material, Vector3 center, Vector3 scale) => Add(cube,material,center,scale);
@@ -333,14 +388,14 @@ namespace PeacePark.Editor
 
         sealed class District
         {
-            internal readonly string Name;
-            internal readonly Pieces West = new Pieces(), East = new Pieces();
+
+
             internal readonly Material[] Facades, Tiles;
             internal readonly Material Snow, Cornice, DarkWindow, WarmWindow;
 
-            internal District(string name, float haze)
+            internal District(float haze)
             {
-                Name = name;
+
                 Facades = new[] { PaintTown("Pale stone", "#DEBEA6"), PaintTown("Biscuit plaster", "#BD9E87"),
                     PaintTown("Faded rose stucco", "#BF8A82"), PaintTown("Muted gold plaster", "#CBA980"),
                     PaintTown("Dove-grey plaster", "#B4ACB6") };

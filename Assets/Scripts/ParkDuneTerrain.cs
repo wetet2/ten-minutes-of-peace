@@ -14,7 +14,11 @@ namespace PeacePark
             (-30f, 11f, 10.5f, 16.5f, 3.8f), (29.5f, 7.5f, 11f, 16f, 4.2f),
             (-28f, -12f, 12f, 13.5f, 2.7f), (29f, -15f, 12f, 15f, 2.9f),
             (-22f, -27f, 16f, 11f, 2.5f), (22f, -27f, 15f, 11f, 2.7f),
-            (-45f, 39f, 22f, 16f, 6.8f), (37f, 46f, 24f, 17f, 7.5f), (-3f, 53f, 25f, 13f, 7.2f)
+            (-45f, 39f, 22f, 16f, 6.8f), (37f, 46f, 24f, 17f, 7.5f), (-3f, 53f, 25f, 13f, 7.2f),
+            // Low shoulders frame the sandy gap; the second ridge closes the southern horizon.
+            (-8f, -32f, 17f, 10f, 3.8f), (16f, -36f, 18f, 12f, 4.3f),
+            (-43f, -49f, 28f, 14f, 7.4f), (3f, -55f, 29f, 14f, 8.2f),
+            (41f, -50f, 24f, 17f, 6.7f)
         };
 
         public static float Height(float x, float z)

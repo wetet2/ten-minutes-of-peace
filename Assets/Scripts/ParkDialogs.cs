@@ -37,6 +37,10 @@ namespace PeacePark
             dim.rectTransform.anchorMin = Vector2.zero;
             dim.rectTransform.anchorMax = Vector2.one;
             dim.rectTransform.offsetMin = dim.rectTransform.offsetMax = Vector2.zero;
+            var dismiss=dim.gameObject.AddComponent<Button>();
+            dismiss.transition=Selectable.Transition.None;
+            dismiss.navigation=new Navigation{mode=Navigation.Mode.None};
+            dismiss.onClick.AddListener(park.CloseDialog);
             rounded = RoundedSprite();
 
             connection = Card("Connection Popup", root);
@@ -53,7 +57,7 @@ namespace PeacePark
 
             settings = Card("Park Settings Popup", root);
             Caption(settings, "설정", 34, new Rect(28, 17, 464, 53), true);
-            Caption(settings, "접속 IP 주소", 21, new Rect(36, 77, 448, 30), true, TextAnchor.MiddleLeft);
+            Caption(settings, "내 IP 주소", 21, new Rect(36, 77, 448, 30), true, TextAnchor.MiddleLeft);
             Surface("IP Address Panel", settings, new Rect(32, 111, 456, 78), new Color32(240, 244, 215, 255));
             addressSummary = Caption(settings, "", 20, new Rect(48, 118, 424, 62), false, TextAnchor.MiddleLeft);
             addressSummary.verticalOverflow = VerticalWrapMode.Truncate;
@@ -62,8 +66,8 @@ namespace PeacePark
             addressSummary.resizeTextMaxSize = 20;
             Caption(settings, "조작 방법", 21, new Rect(36, 199, 448, 31), true, TextAnchor.MiddleLeft);
             string cameraHelp=Application.isMobilePlatform
-                ? "한 손가락으로 밀기  회전\n두 손가락을 함께 밀기  화면 이동\n두 손가락을 벌리거나 오므리기  확대·축소"
-                : "왼쪽 드래그  시점 회전   ·   오른쪽 드래그  화면 이동\n마우스 휠  확대·축소\n카메라 초기화 또는 Home  처음 시점";
+                ? "한 손가락 회전 · 두 손가락 이동·확대\n동물 터치  확대·따라가기\n같은 동물 다시 터치  원래 시점으로"
+                : "드래그 회전 · 오른쪽 드래그 이동 · 휠 확대\n동물 클릭  따라가기 / 다시 클릭  해제\n카메라 초기화 또는 Home  처음 시점";
             Caption(settings, cameraHelp,
                 19, new Rect(36, 232, 448, 65), false, TextAnchor.MiddleLeft);
             Caption(settings, "음악 볼륨", 21, new Rect(36, 306, 112, 48), true, TextAnchor.MiddleLeft);
@@ -114,8 +118,7 @@ namespace PeacePark
             if (showConnection) RefreshConnection();
             if (showSettings)
             {
-                addressSummary.text = park.Lan.HostAddresses ??
-                    "다른 기기를 연결하려면 시작 화면에서 놀이 공간을 열어 주세요.";
+                addressSummary.text = park.Lan.LocalIPv4();
                 musicVolume.SetValueWithoutNotify(park.MusicVolume * 100f);
                 volumePercent.text = $"{musicVolume.value:0}%";
             }
@@ -129,6 +132,12 @@ namespace PeacePark
         {
             if (park.IsConnecting) RefreshConnection();
             RefreshLayout();
+        }
+
+        void OnApplicationFocus(bool focused)
+        {
+            if (focused && park && park.IsSettingsOpen)
+                addressSummary.text = park.Lan.LocalIPv4();
         }
 
         void RefreshConnection()
@@ -196,6 +205,10 @@ namespace PeacePark
         {
             var text = Label(value, parent, value, bold ? ParkFonts.Bold : ParkFonts.Regular, alignment);
             text.fontSize = size;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = Mathf.Min(14, size);
+            text.resizeTextMaxSize = size;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
             Place(text.rectTransform, bounds);
             return text;
         }

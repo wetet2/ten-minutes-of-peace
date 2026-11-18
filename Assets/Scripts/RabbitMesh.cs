@@ -14,8 +14,9 @@ namespace PeacePark
         const float HeadCenterY=2.85f;
         const float HeadDepth=.96f;
         const float PreviousHeadDepth=.62f;
-        // The baked rigs include ground-contact samples for the shared walking pose.
-        public const int GeometryVersion=11;
+        // The baked rigs include shoulder corrections for walking and waving.
+        public const int GeometryVersion=16;
+        public static int GeometryVersionFor(AnimalKind kind)=>GeometryVersion+(kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?1:0);
         public const float ShoulderHeight=2f;
         const float LegScale=.9f;
         const float TemplateHipHeight=1.26f;
@@ -55,10 +56,11 @@ namespace PeacePark
             float y=(point.y-HeadCenterY)/HeadHeight;
             return Mathf.Sqrt(Mathf.Max(0,1-x*x-y*y));
         }
-        public static float RaisedShoulderSurface(Vector3 p,Matrix4x4 inverseClavicle,Matrix4x4 inverseArm,int side)
+        public static float RaisedShoulderSurface(Vector3 p,Matrix4x4 inverseBody,Matrix4x4 inverseClavicle,Matrix4x4 inverseArm,int side)
         {
-            float d=CoreTorso(p);
-            d=Blend(d,Ellipsoid(p,new Vector3(-side*.31f,2f,0),new Vector3(.35f,.28f,.34f)),.16f);
+            var bodyPoint=inverseBody.MultiplyPoint3x4(p);
+            float d=CoreTorso(bodyPoint);
+            d=Blend(d,Ellipsoid(bodyPoint,new Vector3(-side*.31f,2f,0),new Vector3(.35f,.28f,.34f)),.16f);
             d=Blend(d,Ellipsoid(inverseClavicle.MultiplyPoint3x4(p),new Vector3(side*.31f,2f,0),new Vector3(.35f,.28f,.34f)),.2f);
             return Blend(d,Arm(inverseArm.MultiplyPoint3x4(p),side),.24f);
         }
@@ -91,6 +93,9 @@ namespace PeacePark
         static float Smooth(float a,float b,float x)=>Mathf.SmoothStep(0,1,Mathf.InverseLerp(a,b,x));
         static BoneWeight Weight(Vector3 p,AnimalKind kind)
         {
+            // The tail root and shaft move with the pelvis, never with either thigh.
+            if((kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe)&&p.z>.45f&&p.y<1.62f)
+                return new BoneWeight{boneIndex0=0,weight0=1};
             if(kind==AnimalKind.Elephant&&p.z<-.56f&&p.y>1.70f)
                 return new BoneWeight{boneIndex0=1,weight0=1};
             if(kind!=AnimalKind.Rabbit&&p.z>.54f&&p.y<2.22f)

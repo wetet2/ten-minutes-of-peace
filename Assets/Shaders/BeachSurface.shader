@@ -14,6 +14,7 @@ Shader "PeacePark/Beach Surface"
         #pragma surface surf Standard fullforwardshadows vertex:vert addshadow
         #pragma target 3.0
         #include "UnityCG.cginc"
+        #include "BeachCoast.cginc"
         fixed4 _Color;
         float _Kind, _Wind;
         struct Input { float3 worldPos; float2 leafUV; float4 tint; };
@@ -41,19 +42,18 @@ Shader "PeacePark/Beach Surface"
             float smoothness=.12;
             if (_Kind<.5)
             {
-                float shore=-7-.014*p.x*p.x+.25*sin(p.x*.4);
-                float distance=p.y-shore;
+                float distance=PeaceBeachLandDistance(p);
                 float wet=1-smoothstep(.0,1.35,distance);
                 color*=lerp(.94,1.05,broad)*lerp(.93,1.04,fine);
                 float ripple=sin(p.y*12+sin(p.x*1.5)*.8+noise(p*2)*.6);
-                color*=1+.025*ripple;
+                color*=1+.012*ripple;
                 color=lerp(color,color*float3(.68,.72,.70),wet*.67);
-                float forest=smoothstep(12,23,p.y);
+                float forest=smoothstep(12,23,p.y)*smoothstep(1,5,distance)*smoothstep(.06,.17,IN.worldPos.y);
                 color=lerp(color,float3(.18,.23,.10)*(.75+.35*broad),forest);
                 float underwater=1-smoothstep(-.45,.05,IN.worldPos.y);
                 float2 ca=p*2+float2(_Time.y*.13,_Time.y*.09);
                 float veins=abs(sin(ca.x+sin(ca.y*1.13))) * abs(sin(ca.y+cos(ca.x*.87)));
-                float light=pow(saturate(1-veins),18)*underwater;
+                float light=pow(saturate(1-veins),18)*underwater*(1-smoothstep(.04,.40,length(fwidth(p))))*exp(min(0,IN.worldPos.y)*.25);
                 o.Emission=color*light*.10;
                 color*=1+light*.16;
                 smoothness=lerp(.10,.43,wet);
@@ -67,9 +67,11 @@ Shader "PeacePark/Beach Surface"
             {
                 float mineral=noise(p*4.3+IN.worldPos.y*1.9);
                 color*=.75+.38*noise(p*.8+IN.worldPos.y)+.13*mineral;
+                float moss=smoothstep(.55,.75,noise(p*.7+IN.worldPos.y*.23))*smoothstep(.4,1.8,IN.worldPos.y);
+                color=lerp(color,float3(.20,.30,.075),moss*.55);
                 color*=lerp(.53,1,smoothstep(-.3,1.0,IN.worldPos.y));
             }
-            else
+            else if (_Kind<3.5)
             {
                 float midrib=exp(-abs(IN.leafUV.x-.5)*95);
                 float vein=pow(.5+.5*cos((IN.leafUV.y-abs(IN.leafUV.x-.5)*.43)*110),14);
@@ -77,6 +79,12 @@ Shader "PeacePark/Beach Surface"
                 color=lerp(color,color*1.38,midrib*.55);
                 smoothness=.31;
                 o.Emission=color*.055;
+            }
+            else
+            {
+                float grooves=noise(float2((p.x+p.y*.71)*14,IN.worldPos.y*.55));
+                color*=.57+.59*grooves+.11*noise(p*27+IN.worldPos.y*3);
+                smoothness=.08;
             }
             o.Albedo=color; o.Metallic=0; o.Smoothness=smoothness; o.Alpha=1;
         }

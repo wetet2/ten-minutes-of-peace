@@ -1,0 +1,9 @@
+Island environment texture generation
+Tool: built-in image_gen (not CLI).
+
+Asset: Assets/Textures/Island/RainforestBough.png
+Prompt brief: isolated dense tropical leafy bough on a genuinely transparent background; around 50 emerald and yellow-green leaves, irregular silhouette and small gaps, natural branches, detailed stylized realistic game foliage; no ground, sky, text or border. Intended for intersecting leaf cards arranged around 3D tree branches.
+
+Asset: Assets/Textures/Island/CliffRock.png
+Final prompt:
+Create a seamless tileable square albedo texture for a 3D tropical island cliff wall. Orthographic straight-on surface ONLY, completely fills the frame, no perspective, no scenery, no sky, no border, no objects. Dark warm grey weathered limestone and volcanic rock, irregular angular fractured slabs of different sizes, deep fine cracks, chipped stone and coarse granular mineral detail, subtle sparse olive moss in crevices, occasional brown damp mineral stains. Natural non-repeating irregular geological structure, NOT straight uniform vertical lines. Medium contrast rich detail readable from a distance, neutral diffuse flat lighting, no directional shadows or shiny highlights, no text. All four edges seamlessly tile. Realistic detailed game environment material, muted earthy grey, moss covers under 15 percent.

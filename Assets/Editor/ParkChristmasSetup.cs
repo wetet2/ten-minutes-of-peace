@@ -22,7 +22,9 @@ namespace PeacePark.Editor
         readonly Material greenLight = Paint("Spruce tips", "#528061");
         readonly Material brass = Paint("Golden brass", "#F3BA51");
         readonly Material amber = Glow("Amber window glass", "#FFCF83");
-        readonly Material flame = Glow("Warm Christmas bulbs", "#FFE2A3");
+        readonly Material[] bulbs={Bulb("Candlelight","#FFD585"),Bulb("Ruby","#F85B53"),Bulb("Champagne","#FFF1C9")};
+        readonly Mesh bulb=RoundProfile("Round tree light",8,new Vector2(.01f,-.5f),new Vector2(.42f,-.25f),
+            new Vector2(.50f,0),new Vector2(.42f,.25f),new Vector2(.01f,.5f));
 
         internal static ParkVenue Create(Transform root) => new ParkChristmasSetup().Build(root);
 
@@ -40,8 +42,13 @@ namespace PeacePark.Editor
 
             var scenery = Group("Evergreens, lanterns and snowdrifts", root, Vector3.zero);
             var pieces = new Pieces();
-            Vector3 tree = new Vector3(-12.6f, 0, -6.0f);
-            AddFir(pieces, tree, 7, true);
+            AddFir(pieces,new Vector3(-12.6f,0,-6f),7,true);
+            AddFir(pieces,new Vector3(12.9f,0,-5.8f),6.8f,true);
+            foreach(int side in new[] {-1,1})
+            {
+                Lantern(pieces,new Vector3(side*3.1f,0,-28.8f));
+                AddFir(pieces,new Vector3(side*13.5f,0,-27.5f),side<0?4.3f:5.1f,false);
+            }
             foreach (var p in new[] { new Vector3(-6.7f,0,-10.3f), new Vector3(6.7f,0,-10.3f),
                 new Vector3(-10.4f,0,-3.2f), new Vector3(11.3f,0,-2.8f), new Vector3(-16.5f,0,2.8f), new Vector3(16.5f,0,3.5f) })
                 Lantern(pieces, p);
@@ -50,7 +57,8 @@ namespace PeacePark.Editor
                 float side = i < 6 ? -1 : 1;
                 int row = i % 6;
                 float x = 32.25f + i % 3 * .20f;
-                var p = new Vector3(side * x, 0, -19.75f + row * 5.25f);
+                float z=row<3?-27+row*10:7+(row-3)*10;
+                var p = new Vector3(side * x, 0, z);
                 AddFir(pieces, p, 3.8f + i % 4 * .68f, false);
                 pieces.Add(ball, snow, p, new Vector3(4.1f, .44f, 2.45f));
             }
@@ -71,7 +79,7 @@ namespace PeacePark.Editor
                 Name = "시계탑 광장", Root = root.gameObject, Houses = new[] { cathedral }, LawnHeight = .025f,
                 WalkArea = Rect.MinMaxRect(-12, -12.4f, 12, 7.8f),
                 WalkObstacles = new[] { Rect.MinMaxRect(-15.9f, 4.33f, 15.9f, ParkChristmasCathedral.FootprintBack+.4f),
-                    Rect.MinMaxRect(-12.6f, -8.13f, -10.75f, -4.65f) },
+                    Rect.MinMaxRect(-12.6f, -8.13f, -10.75f, -4.65f),Rect.MinMaxRect(10.95f,-7.9f,14.85f,-3.7f) },
                 Focus = new Vector3(0, 8.95f, 2.75f), Distance = 40, Pitch = 16, Yaw = 13, MaxDistance = 62,
                 FogEnd = 198, Sky = new Color32(116, 115, 181, 255)
             };
@@ -92,8 +100,8 @@ namespace PeacePark.Editor
                 for (int i = 0; i < 15; i++)
                 {
                     float angle = i * Mathf.PI * 2 / 15 + layer*.51f;
-                    var bulb = point + new Vector3(Mathf.Cos(angle)*width*.92f, y+length*(.19f+.033f*Mathf.Sin(angle*2)), Mathf.Sin(angle)*width*.92f);
-                    p.Add(ball, i % 3 == 0 ? redLight : flame, bulb, Vector3.one * (i % 3 == 0 ? .20f : .14f));
+                    var lightPosition=point+new Vector3(Mathf.Cos(angle)*width*1.015f,y+length*(.19f+.033f*Mathf.Sin(angle*2)),Mathf.Sin(angle)*width*1.015f);
+                    p.Add(bulb,bulbs[(i+layer)%bulbs.Length],lightPosition,Vector3.one*(i%3==0?.21f:.17f));
                 }
             }
             if (!decorated) return;
@@ -232,11 +240,11 @@ namespace PeacePark.Editor
             main.prewarm = true;
             main.startLifetime = new ParticleSystem.MinMaxCurve(9, 12);
             main.startSpeed = new ParticleSystem.MinMaxCurve(1.15f, 1.75f);
-            main.startSize = new ParticleSystem.MinMaxCurve(.028f, .088f);
+            main.startSize = new ParticleSystem.MinMaxCurve(.050f, .125f);
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 195;
+            main.maxParticles = 660;
             var emission = particles.emission;
-            emission.rateOverTime = 16;
+            emission.rateOverTime = 54;
             var shape = particles.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
             shape.scale = new Vector3(39, 29, .70f);
@@ -251,6 +259,12 @@ namespace PeacePark.Editor
         {
             ColorUtility.TryParseHtmlString(hex, out var color);
             return new Material(Shader.Find("Unlit/Color")) { name = name, color = color };
+        }
+
+        static Material Bulb(string name,string hex)
+        {
+            ColorUtility.TryParseHtmlString(hex,out var color);
+            return new Material(Shader.Find("PeacePark/Festive Bulbs")){name=name+" tree bulbs",color=color};
         }
 
         static Mesh RoundProfile(string name, int sides, params Vector2[] profile)

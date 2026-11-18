@@ -128,7 +128,7 @@ namespace PeacePark.Editor
             AddGarland(p, Arch(DoorHalfWidth+.29f,DoorFloor,DoorSpring,DoorCrown+.36f), Front-.56f);
             Moulding(p, 0,7.35f,halfBay*2,Front);
             AddBalustrade(p, 0,7.55f,halfBay*1.94f,Front-.33f);
-            AddClock(p, new Vector3(0,11.85f,Front-.085f));
+            AddClock(root,p,new Vector3(0,11.85f,Front-.085f));
             foreach (int side in new[] { -1, 1 })
             {
                 Quatrefoil(p, new Vector3(side*2.28f,8.65f,Front-.22f), .49f);
@@ -363,7 +363,7 @@ namespace PeacePark.Editor
             return root;
         }
 
-        void AddClock(Pieces p, Vector3 center)
+        void AddClock(Transform parent,Pieces p,Vector3 center)
         {
             p.Add(Annulus("Outer carved clock cornice",2.68f,3.00f,.37f,64),ivory,center,Vector3.one);
             p.Add(Annulus("Pink clock surround",2.61f,2.81f,.23f,64),rose,center+Vector3.back*.18f,Vector3.one);
@@ -383,8 +383,12 @@ namespace PeacePark.Editor
                 var anchor = front+rotation*(Vector3.up*2.075f);
                 AddRoman(p,numerals[i],anchor,rotation);
             }
-            AddHand(p,front+Vector3.back*.052f,61,1.56f,.16f);
-            AddHand(p,front+Vector3.back*.087f,-61,2.07f,.106f);
+            var hands=Group("Moving clock hands",parent,front);
+            var hour=AddHand(hands,"Hour hand",.052f,1.56f,.16f);
+            var minute=AddHand(hands,"Minute hand",.115f,2.07f,.106f);
+            var clock=hands.gameObject.AddComponent<ParkTowerClock>();
+            clock.HourHand=hour;
+            clock.MinuteHand=minute;
             p.Add(bead,brass,front+new Vector3(0,-.146f,-.18f),new Vector3(.32f,.30f,.264f));
         }
 
@@ -431,16 +435,15 @@ namespace PeacePark.Editor
             }
         }
 
-        void AddHand(Pieces p, Vector3 center, float angle, float length, float width)
+        Transform AddHand(Transform parent,string name,float depth,float length,float width)
         {
-            var rotation = Quaternion.Euler(0,0,angle);
             var blade = ParkGeometry.Extrude("Tapered decorative clock hand", new List<Vector2>
             {
                 new Vector2(-width*.36f,-.22f),new Vector2(width*.36f,-.22f),new Vector2(width*.50f,length*.67f),
                 new Vector2(width*.79f,length*.80f),new Vector2(0,length),new Vector2(-width*.79f,length*.80f),
                 new Vector2(-width*.50f,length*.67f)
             },.052f);
-            p.Add(blade,ink,center,Vector3.one,rotation);
+            return ParkGeometry.Place(name,blade,parent,Vector3.back*depth,Vector3.one,ink);
         }
 
         void AddWindow(Transform parent, Pieces p, float x, float bottom, float width, float height, float z)

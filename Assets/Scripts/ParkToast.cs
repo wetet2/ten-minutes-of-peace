@@ -38,7 +38,7 @@ namespace PeacePark
 
         internal void Show(string message)
         {
-            label.text=message;
+            label.text=ParkLanguage.Text(message);
             expires=Time.unscaledTime+Duration;
             banner.gameObject.SetActive(true);
             Update();

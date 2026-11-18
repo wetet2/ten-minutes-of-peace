@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace PeacePark
 {
-    public sealed class RabbitCharacter : MonoBehaviour
+    public sealed partial class RabbitCharacter : MonoBehaviour
     {
         Material paintMaterial;
         Material[] materials;
@@ -19,6 +19,7 @@ namespace PeacePark
             public Mesh Mesh;
             public int SkinVertexCount;
             public int[] SkinTriangles;
+            public FootSole LeftSole, RightSole;
             public bool RuntimeOwned;
         }
         static readonly Dictionary<AnimalKind,Geometry> cache=new Dictionary<AnimalKind,Geometry>();
@@ -83,7 +84,7 @@ namespace PeacePark
         void Build()
         {
             rigAsset=Resources.Load<RabbitRigAsset>(AnimalKinds.RigResource(Kind));
-            if(rigAsset&&rigAsset.GeometryVersion!=RabbitMesh.GeometryVersion)rigAsset=null;
+            if(rigAsset&&rigAsset.GeometryVersion!=RabbitMesh.GeometryVersionFor(Kind))rigAsset=null;
             if(rigAsset&&!cache.ContainsKey(Kind))
             {
                 cache[Kind]=new Geometry
@@ -97,12 +98,12 @@ namespace PeacePark
             paintMaterial.SetTexture("_FrontTex",frontTexture);paintMaterial.SetTexture("_BackTex",backTexture);
             materials=new[]{paintMaterial,Solid("Warm dark eyes and smile",new Color32(54,40,38,255),.38f),Solid("Soft pink",new Color32(247,161,181,255)),Solid("Warm white muzzle",new Color32(255,248,237,255))};
             model=Pivot("Rabbit rig",transform,Vector3.zero);
-            body=Pivot("Body",model,new Vector3(0,1.68f,0));head=Pivot("Head and neck",model,new Vector3(0,2.32f,0));
+            body=Pivot("Body",model,BodyRest);head=Pivot("Head and neck",model,new Vector3(0,2.32f,0));
             // Clavicles pivot near the chest. Their outer ends carry the upper-arm joints,
             // so raising a clavicle elevates both the shoulder surface and the arm socket.
             leftShoulder=Pivot("Left clavicle",model,new Vector3(-.22f,2.08f,0));rightShoulder=Pivot("Right clavicle",model,new Vector3(.22f,2.08f,0));
             leftArm=Pivot("Left upper arm",leftShoulder,new Vector3(-.35f,RabbitMesh.ShoulderHeight-2.08f,0));rightArm=Pivot("Right upper arm",rightShoulder,new Vector3(.35f,RabbitMesh.ShoulderHeight-2.08f,0));
-            leftLeg=Pivot("Left hip",model,new Vector3(-.32f,RabbitMesh.HipHeight,0));rightLeg=Pivot("Right hip",model,new Vector3(.32f,RabbitMesh.HipHeight,0));
+            leftLeg=Pivot("Left hip",model,LeftHipRest);rightLeg=Pivot("Right hip",model,RightHipRest);
             var bones=new[]{body,head,leftArm,rightArm,leftLeg,rightLeg,leftShoulder,rightShoulder};
             bool reuse=cache.TryGetValue(Kind,out var geometry);
             if(reuse){mesh=geometry.Mesh;SkinVertexCount=geometry.SkinVertexCount;SkinTriangles=geometry.SkinTriangles;}
@@ -117,12 +118,16 @@ namespace PeacePark
             skin=gameObject.AddComponent<SkinnedMeshRenderer>();skin.sharedMesh=mesh;skin.bones=bones;skin.rootBone=model;
             skin.sharedMaterials=materials;skin.quality=SkinQuality.Bone4;skin.updateWhenOffscreen=true;
             skin.localBounds=new Bounds(new Vector3(0,2.6f,0),new Vector3(4,6.4f,4));
+            gait=GaitFor(Kind);
+            if(reuse&&geometry.LeftSole!=null){leftSole=geometry.LeftSole;rightSole=geometry.RightSole;}
+            else PrepareSoles(mesh);
+            if(reuse){geometry.LeftSole=leftSole;geometry.RightSole=rightSole;}
             if(!reuse)
             {
                 RabbitShoulderCorrective.Build(this);
                 if(Application.isPlaying)cache[Kind]=new Geometry
                 {
-                    Mesh=mesh,SkinVertexCount=SkinVertexCount,SkinTriangles=SkinTriangles,RuntimeOwned=true
+                    Mesh=mesh,SkinVertexCount=SkinVertexCount,SkinTriangles=SkinTriangles,RuntimeOwned=true,LeftSole=leftSole,RightSole=rightSole
                 };
             }
             correctiveReady=true;
@@ -166,28 +171,28 @@ namespace PeacePark
         {
             IdlePose();
             WalkPose(phase,strength);
-            float idleFloor=rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y;
-            float walkFloor=rigAsset?rigAsset.WalkingFloor(phase):idleFloor;
-            PlaceFeet(Mathf.Lerp(idleFloor,walkFloor,strength));
+            PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
         }
         public void PlayWavePose(float progress)
         {
-                IdlePose();float t=Mathf.Clamp01(progress);
-                float release=Mathf.SmoothStep(0,1,Mathf.Clamp01((1-t)/.2f));
-                float shoulderEase=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/.15f))*release;
-                float ease=Mathf.SmoothStep(0,1,Mathf.Clamp01((t-.035f)/.2f))*release;
-                float lift=Mathf.Lerp(-40,50+Mathf.Sin(t*Mathf.PI*4)*6,ease);
-                float clavicleLift=(20+Mathf.Sin(t*Mathf.PI*4)*1.5f)*shoulderEase;
-                rightShoulder.localRotation=Quaternion.Euler(0,0,clavicleLift);
-                rightShoulder.localPosition+=Vector3.up*(.04f*shoulderEase);
-                rightArm.localRotation=Quaternion.Euler(0,0,lift-clavicleLift);
-                head.localRotation=Quaternion.Euler(0,0,Mathf.Sin(t*Mathf.PI*2)*3);
-                if(correctiveReady)
-                {
-                    skin.SetBlendShapeWeight(0,100*(1-release));
-                    skin.SetBlendShapeWeight(2,(1+t*99)*(t<.8f?1:release));
-                }
-                PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
+            IdlePose();
+            float t=Mathf.Clamp01(progress);
+            float release=Mathf.SmoothStep(0,1,Mathf.Clamp01((1-t)/.2f));
+            float shoulderEase=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/.15f))*release;
+            float ease=Mathf.SmoothStep(0,1,Mathf.Clamp01((t-.035f)/.2f))*release;
+            float lift=Mathf.Lerp(-40,50+Mathf.Sin(t*Mathf.PI*4)*6,ease);
+            float clavicleLift=(20+Mathf.Sin(t*Mathf.PI*4)*1.5f)*shoulderEase;
+            rightShoulder.localRotation=Quaternion.Euler(0,0,clavicleLift);
+            rightShoulder.localPosition+=Vector3.up*(.04f*shoulderEase);
+            rightArm.localRotation=Quaternion.Euler(0,0,lift-clavicleLift);
+            head.localRotation=Quaternion.Euler(0,0,Mathf.Sin(t*Mathf.PI*2)*3*shoulderEase);
+            if(correctiveReady)
+            {
+                // The weight selects a baked pose by time, including the lowered arm at the end.
+                skin.SetBlendShapeWeight(0,0);
+                skin.SetBlendShapeWeight(2,1+t*99);
+            }
+            PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
         }
         internal void PlayHopPose(float progress)
         {
@@ -262,20 +267,13 @@ namespace PeacePark
             }
         }
         void Update(){if(running&&!ExternalMotion){sequenceTime+=Time.deltaTime;PreviewPose(sequenceTime);}}
-        void WalkPose(float phase,float strength=1)
-        {
-            if(correctiveReady){skin.SetBlendShapeWeight(0,100*(1-strength));skin.SetBlendShapeWeight(1,(1+Mathf.Repeat(phase,Mathf.PI*2)/(Mathf.PI*2)*99)*strength);}
-            float cycle=Mathf.Sin(phase)*strength;
-            float armSwing=cycle*15,legSwing=cycle*22;
-            leftArm.localRotation=Quaternion.Euler(armSwing,0,40);rightArm.localRotation=Quaternion.Euler(-armSwing,0,-40);
-            leftLeg.localRotation=Quaternion.Euler(-legSwing,0,0);rightLeg.localRotation=Quaternion.Euler(legSwing,0,0);
-            model.localPosition=new Vector3(0,Mathf.Abs(cycle)*.035f,0);
-            body.localRotation=Quaternion.Euler(0,0,cycle*1.5f);head.localRotation=Quaternion.Euler(0,0,-cycle*1.5f);
-        }
         void IdlePose()
         {
             if(correctiveReady){skin.SetBlendShapeWeight(0,100);skin.SetBlendShapeWeight(1,0);skin.SetBlendShapeWeight(2,0);}
             leftLeg.localRotation=rightLeg.localRotation=body.localRotation=head.localRotation=Quaternion.identity;model.localPosition=Vector3.zero;
+            body.localPosition=BodyRest;
+            leftLeg.localPosition=LeftHipRest;
+            rightLeg.localPosition=RightHipRest;
             head.localPosition=new Vector3(0,2.32f,0);
             leftShoulder.localPosition=new Vector3(-.22f,2.08f,0);rightShoulder.localPosition=new Vector3(.22f,2.08f,0);
             leftShoulder.localRotation=rightShoulder.localRotation=Quaternion.identity;

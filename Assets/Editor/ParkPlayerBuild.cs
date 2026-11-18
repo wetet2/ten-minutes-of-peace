@@ -56,8 +56,8 @@ namespace PeacePark.Editor
                     (house.EntranceBell&&renderer.transform.IsChildOf(house.EntranceBell))))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var fountain=renderer.GetComponentInParent<ParkFountain>();
-                if(renderer.GetComponentInParent<ParkBeachWildlife>()||renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
-                    renderer.GetComponentInParent<ParkRoundaboutSpin>()||
+                if(renderer.GetComponentInParent<ParkWaterfall>()||renderer.GetComponentInParent<ParkBeachWildlife>()||renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
+                    renderer.GetComponentInParent<ParkRoundaboutSpin>()||renderer.GetComponentInParent<ParkTowerClock>()||
                     (fountain&&fountain.IsMovingPart(renderer.transform)))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,StaticEditorFlags.BatchingStatic);
@@ -73,7 +73,7 @@ namespace PeacePark.Editor
         {
             string rigPath="Assets/Resources/"+AnimalKinds.RigResource(kind)+".asset";
             var rig=AssetDatabase.LoadAssetAtPath<RabbitRigAsset>(rigPath);
-            int version=RabbitMesh.GeometryVersion;
+            int version=RabbitMesh.GeometryVersionFor(kind);
             if(rig&&rig.Mesh&&rig.GeometryVersion==version)return;
             Directory.CreateDirectory(Path.GetDirectoryName(rigPath));AssetDatabase.Refresh();
             var go=new GameObject("Bake corrected "+kind+" for player");var probe=new Mesh();
@@ -95,14 +95,11 @@ namespace PeacePark.Editor
                 rig.Mesh.name="Baked "+kind+" with shoulder corrections";
                 rig.SkinVertexCount=rabbit.SkinVertexCount;rig.SkinTriangles=rabbit.SkinTriangles;
                 rabbit.PlayIdlePose();rabbit.Skin.BakeMesh(probe);probe.RecalculateBounds();rig.IdleFloor=probe.bounds.min.y;
-                rig.WalkFloor=new float[65];
-                for(int i=0;i<rig.WalkFloor.Length;i++)
-                {rabbit.PlayWalkingPose(i*Mathf.PI*2/64);rabbit.Skin.BakeMesh(probe);probe.RecalculateBounds();rig.WalkFloor[i]=probe.bounds.min.y;}
                 rig.GeometryVersion=version;
                 EditorUtility.SetDirty(rig.Mesh);
                 EditorUtility.SetDirty(rig);
                 AssetDatabase.SaveAssets();
-                Debug.Log($"ANIMAL RIG BAKED: {kind}, {rig.Mesh.vertexCount} vertices, idle floor {rig.IdleFloor:F4}, 65 contact samples.");
+                Debug.Log($"ANIMAL RIG BAKED: {kind}, {rig.Mesh.vertexCount} vertices, idle floor {rig.IdleFloor:F4}.");
             }
             finally{Object.DestroyImmediate(probe);Object.DestroyImmediate(go);}
         }

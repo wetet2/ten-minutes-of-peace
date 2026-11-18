@@ -20,7 +20,10 @@ namespace PeacePark
         public Vector3 Focus;
         public float Distance, Yaw, Pitch;
         public float MaxDistance;
+        public Vector2 CameraPanLimits;
+        public float CloseFocusHeight;
         public float FogEnd;
+        public float FogStart;
         public Color Sky;
         public Texture2D Preview;
     }

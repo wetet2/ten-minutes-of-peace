@@ -19,14 +19,14 @@ namespace PeacePark.Editor
             var box=ParkSurface.RoundedBox();
             var sphere=PrimitiveMesh(PrimitiveType.Sphere);
             var cylinder=PrimitiveMesh(PrimitiveType.Cylinder);
-            var mint=Paint("Mint padded trim","#8CCDB5");
-            var cream=Paint("Vanilla play mat","#FFE0AF");
+            var mint=Paint("Mint padded trim","#55BD9B");
+            var cream=Paint("Vanilla play mat","#F3D5A5");
             var plaster=Paint("Peach plaster","#FAD5AF");
             var wood=Paint("Honey wood","#D39656");
             var shade=Paint("Entrance passage","#A97660");
-            var blue=Paint("Sky-blue foam","#8BB9EA");
-            var yellow=Paint("Buttercup slide","#FFD358");
-            var coral=Paint("Apricot foam","#FA946F");
+            var blue=Paint("Sky-blue foam","#549BE0");
+            var yellow=Paint("Buttercup slide","#F5BD32");
+            var coral=Paint("Apricot foam","#EF805E");
             float left=-RoomWidth/2,back=RoomDepth/2;
             ParkCafeTerrace.Create(root,RoomWidth,RoomDepth,cream,box,sphere);
 
@@ -41,6 +41,8 @@ namespace PeacePark.Editor
             var pole=CreatePoleTower(root,box,sphere,cylinder,blue,wood,shade,plaster,yellow,coral,mint);
             CreateTrampoline(root,box,sphere,cylinder,mint,coral,blue);
             CreateSeesaw(root,box,sphere,cylinder,mint,coral,blue,yellow);
+            ClearMaterials(root);
+            root.gameObject.AddComponent<ParkPlaygroundAtmosphere>();
             return new ParkVenue
             {
                 Name="놀이터",Root=root.gameObject,Houses=new[]{gate,pole},LawnHeight=0,Slide=slide,
@@ -53,8 +55,31 @@ namespace PeacePark.Editor
                     Rect.MinMaxRect(TrampolinePosition.x-2.35f,TrampolinePosition.z-2.75f,TrampolinePosition.x+2.35f,TrampolinePosition.z+2.35f),
                     Rect.MinMaxRect(SeesawPosition.x-2.64f,SeesawPosition.z-1.19f,SeesawPosition.x+2.64f,SeesawPosition.z+1.19f)},
                 Focus=new Vector3(.25f,1.55f,1.8f),Distance=41f,Yaw=-8,Pitch=34,
-                Sky=new Color32(194,224,213,255)
+                FogStart=95,FogEnd=210,Sky=new Color32(170,208,231,255)
             };
+        }
+
+        static void ClearMaterials(Transform root)
+        {
+            // Clone venue materials so shared assets in other places keep their existing appearance.
+            var copies=new Dictionary<Material,Material>();
+            foreach(var renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                var materials=renderer.sharedMaterials;
+                for(int i=0;i<materials.Length;i++)
+                {
+                    var source=materials[i];
+                    if(!source||source.shader.name!="PeacePark/Storybook")continue;
+                    if(!copies.TryGetValue(source,out var copy))
+                    {
+                        copy=new Material(source){name=source.name+" - clear playground"};
+                        copy.SetColor("_Shade",new Color(.49f,.53f,.57f));
+                        copy.SetFloat("_ShadowFloor",.52f);copy.SetFloat("_ShadowFadeDistance",85);copies.Add(source,copy);
+                    }
+                    materials[i]=copy;
+                }
+                renderer.sharedMaterials=materials;
+            }
         }
 
         static ParkHouse CreateLookout(string name,Transform parent,Vector3 position,Mesh box,Mesh sphere,

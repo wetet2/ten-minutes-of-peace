@@ -21,8 +21,6 @@ namespace PeacePark
         byte[] lastFront, lastBack;
         AnimalKind lastKind;
         Guid draftId;
-        string hostAddresses;
-        internal string HostAddresses => hostAddresses;
         internal bool IsJoining => probe != null;
         public bool IsHosting => host != null;
         public bool IsJoined => remote != null;
@@ -36,7 +34,6 @@ namespace PeacePark
             try
             {
                 host = new ParkLan.Host();
-                hostAddresses = GetAddresses();
                 return true;
             }
             catch (SocketException)
@@ -46,22 +43,42 @@ namespace PeacePark
             }
         }
 
-        static string GetAddresses()
+        internal string LocalIPv4()
         {
+#if UNITY_ANDROID
+            if (UnityEngine.Application.platform == UnityEngine.RuntimePlatform.Android)
+                return ParkAndroidLanAddress.Read()?.ToString() ?? "—";
+#endif
+            // UDP Connect asks the OS which source address it would route from. No packet is sent.
             try
             {
-                var addresses = NetworkInterface.GetAllNetworkInterfaces()
+                using var route=new Socket(AddressFamily.InterNetwork,SocketType.Dgram,ProtocolType.Udp);
+                route.Connect(remote??IPAddress.Parse("192.0.2.1"),ParkLan.Port);
+                if(route.LocalEndPoint is IPEndPoint local && IsAdvertisableIPv4(local.Address))
+                    return local.Address.ToString();
+            }
+            catch(SocketException) { }
+            try
+            {
+                return NetworkInterface.GetAllNetworkInterfaces()
                     .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
+                    .OrderByDescending(adapter=>adapter.NetworkInterfaceType==NetworkInterfaceType.Wireless80211||
+                        adapter.NetworkInterfaceType==NetworkInterfaceType.Ethernet)
                     .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
                     .Select(entry => entry.Address)
-                    .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
-                    .Select(ip => ip.ToString())
-                    .Distinct()
-                    .ToArray();
-                return addresses.Length == 0 ? "같은 PC  127.0.0.1"
-                    : "다른 기기  " + string.Join(" · ", addresses) + "\n같은 PC  127.0.0.1";
+                    .FirstOrDefault(IsAdvertisableIPv4)?.ToString()??"—";
             }
-            catch (NetworkInformationException) { return "같은 PC  127.0.0.1"; }
+            catch(NetworkInformationException) { return "—"; }
+            catch(NotSupportedException) { return "—"; }
+        }
+
+        internal static bool IsAdvertisableIPv4(IPAddress address)
+        {
+            if (address == null || address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address))
+                return false;
+            var bytes = address.GetAddressBytes();
+            // 192.0.0.0/24 contains protocol addresses, including the IPv4 dummy address.
+            return bytes[0] > 0 && bytes[0] < 224 && !(bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 0);
         }
 
         internal bool BeginJoin(string value)
@@ -176,7 +193,6 @@ namespace PeacePark
             CancelJoin();
             host?.Dispose();
             host = null;
-            hostAddresses = null;
             remote = null;
             lastFront = lastBack = null;
             LastSendAccepted = false;

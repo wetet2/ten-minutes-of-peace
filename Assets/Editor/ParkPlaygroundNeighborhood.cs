@@ -34,11 +34,31 @@ namespace PeacePark.Editor
             var buildings=Group("Low village buildings",neighborhood,Vector3.zero);
             var roof=ParkGeometry.Roof();
             var doorway=ParkGeometry.Arch(1.07f,1.81f,.12f);
-            BuildHouse("Peach house",new Vector3(-15.4f,0,halfDepth+6.68f),-13f,
-                Paint("Apricot plaster","#ECA987"),Paint("Terracotta roof","#AA6B50"),-1);
-            BuildHouse("Sage house",new Vector3(15.0f,0,halfDepth+7.10f),11f,
-                Paint("Sage-painted plaster","#ACCCAE"),Paint("Slate blue roof","#6A8F9F"),1);
+            var peachWall=Paint("Apricot plaster","#ECA987");
+            var sageWall=Paint("Sage-painted plaster","#ACCCAE");
+            var clayRoof=Paint("Terracotta roof","#AA6B50");
+            var slateRoof=Paint("Slate blue roof","#6A8F9F");
+            BuildHouse(buildings,"Peach house",new Vector3(-15.4f,0,halfDepth+6.68f),-13f,peachWall,clayRoof,-1);
+            BuildHouse(buildings,"Sage house",new Vector3(15.0f,0,halfDepth+7.10f),11f,sageWall,slateRoof,1);
             BuildShop();
+
+            // The front crossings land on the far side of the loop road. Set the houses
+            // back from this sidewalk so their windows face the park across small lawns.
+            var front=Group("Front residential street",neighborhood,Vector3.zero);
+            var frontPaths=new Pieces();
+            const float sidewalkZ=-16.75f;
+            frontPaths.Add(slab,pavement,new Vector3(0,.035f,sidewalkZ),new Vector3(35,.07f,1.9f));
+            FrontHouse("Honey cottage",-15,-22.7f,170,Paint("Honey plaster","#EACB95"),slateRoof);
+            FrontHouse("Rose cottage",-2.6f,-25.4f,186,peachWall,clayRoof);
+            FrontHouse("Garden cottage",13,-21.8f,173,sageWall,clayRoof);
+            frontPaths.Build(Group("Front pavement and garden paths",front,Vector3.zero));
+
+            var frontTrees=new Pieces();
+            foreach(var point in new[]{new Vector3(-20,0,-20),new Vector3(-9,0,-21.8f),new Vector3(5.6f,0,-24),
+                new Vector3(19.6f,0,-23),new Vector3(-24,0,-31),new Vector3(-11,0,-29),
+                new Vector3(8.2f,0,-32),new Vector3(24,0,-30)})
+                AddTree(frontTrees,canopy,trunk,timber,greens,point,3.1f+Mathf.Abs(point.x%2)*.6f);
+            frontTrees.Build(Group("Front garden trees",front,Vector3.zero));
 
             foreach(int side in new[]{-1,1})
             {
@@ -82,7 +102,10 @@ namespace PeacePark.Editor
                 point.z+=6.45f;
                 BuildYard(yards,name+" backyard",point,box,slab,sphere,timber,fence,soil,greens,carrot,tomato);
             }
-            BuildDistantHouses(neighborhood,box,roof);
+            BuildDistantHouses(neighborhood,box,roof,new[]{new Vector3(-13.1f,0,33.3f),new Vector3(-5.6f,0,37.26f),
+                new Vector3(4.2f,0,34.1f),new Vector3(12.7f,0,36.85f)});
+            BuildDistantHouses(front,box,roof,new[]{new Vector3(-22,0,-34),new Vector3(-10,0,-32),
+                new Vector3(3,0,-36),new Vector3(18,0,-32.7f)});
 
             var garden=new Pieces();
             foreach(var point in new[]{new Vector3(-19.0f,0,14.8f),new Vector3(18.8f,0,14.7f),
@@ -91,9 +114,19 @@ namespace PeacePark.Editor
                 AddTree(garden,canopy,trunk,timber,greens,point,3.22f+Mathf.Abs(point.x%2)*.33f);
             garden.Build(Group("Scattered village trees",neighborhood,Vector3.zero));
 
-            void BuildHouse(string name,Vector3 point,float yaw,Material plaster,Material shingles,int chimneySide)
+            void FrontHouse(string name,float x,float z,float yaw,Material plaster,Material shingles)
             {
-                var house=Group(name,buildings,point);
+                var point=new Vector3(x,0,z);
+                BuildHouse(front,name,point,yaw,plaster,shingles,x<0?-1:1);
+                var doorstep=point+Quaternion.Euler(0,yaw,0)*new Vector3(0,0,-2.55f);
+                float sidewalkEdge=sidewalkZ-.95f;
+                frontPaths.Add(slab,joints,new Vector3(doorstep.x,.021f,(doorstep.z+sidewalkEdge)/2),
+                    new Vector3(1.28f,.042f,sidewalkEdge-doorstep.z));
+            }
+
+            void BuildHouse(Transform parent,string name,Vector3 point,float yaw,Material plaster,Material shingles,int chimneySide)
+            {
+                var house=Group(name,parent,point);
                 house.localRotation=Quaternion.Euler(0,yaw,0);
                 var pieces=new Pieces();
                 pieces.Add(box,plaster,new Vector3(0,1.37f,0),new Vector3(5.18f,2.75f,4.03f));
@@ -315,14 +348,12 @@ namespace PeacePark.Editor
             }
         }
 
-        static void BuildDistantHouses(Transform parent,Mesh box,Mesh roof)
+        static void BuildDistantHouses(Transform parent,Mesh box,Mesh roof,Vector3[] points)
         {
             var skyline=Group("Distant village roofs",parent,Vector3.zero);
             var plaster=Paint("Distant warm plaster","#CFBCA4");
             var shingles=new[]{Paint("Distant terracotta","#AB7765"),Paint("Distant slate","#788E9B"),
                 Paint("Distant muted plum","#9D8496")};
-            var points=new[]{new Vector3(-13.1f,0,33.3f),new Vector3(-5.6f,0,37.26f),
-                new Vector3(4.2f,0,34.1f),new Vector3(12.7f,0,36.85f)};
             for(int i=0;i<points.Length;i++)
             {
                 var house=Group($"Distant house {i+1}",skyline,points[i]);

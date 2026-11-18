@@ -31,7 +31,7 @@ namespace PeacePark
         static readonly int ShadowOpacity=Shader.PropertyToID("_Opacity");
         float activityTime,activityDelay;
         const float WaveDuration=1.65f;
-        const float WanderSpeed=.65f;
+        internal const float WanderSpeed=.70f;
         internal const float AnimalSpacing=.82f;
         static readonly float[] DepartureAngles={-84,-56,-28,0,28,56,84};
         static readonly float[] AvoidanceAngles={30,-30,60,-60,90,-90,120,-120,150,-150,180};
@@ -274,9 +274,10 @@ namespace PeacePark
 
         void WalkTo(Vector3 position)
         {
-            float distance=Vector3.Distance(transform.position,position);
+            var step=position-transform.position;
+            float distance=new Vector2(step.x,step.z).magnitude;
             transform.position=position;
-            phase+=distance*12;
+            phase=Character.AdvanceWalkPhase(phase,distance);
             WalkedDistance+=distance;
             Character.PlayWalkingPose(phase);
         }
@@ -544,7 +545,8 @@ namespace PeacePark
                 next=Vector3.Lerp(position,next,1-Mathf.SmoothStep(0,leavingEntrance?.55f:.8f,Mathf.InverseLerp(15,65,turn)));
             heading=next-position;
             next.y=park.SurfaceHeight(next);
-            float moved=heading.magnitude;transform.position=next;WalkedDistance+=moved;phase+=moved*12;
+            float moved=heading.magnitude;transform.position=next;WalkedDistance+=moved;
+            phase=Character.AdvanceWalkPhase(phase,moved);
             float walkBlend=Mathf.SmoothStep(0,1,moved/(WanderSpeed*deltaTime));
             Character.PlayWalkingPose(phase,walkBlend);blocked=0;
             if(turn<=15)leavingEntrance=false;

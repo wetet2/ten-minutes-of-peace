@@ -16,6 +16,28 @@ namespace PeacePark
             return (offset-axis*along).magnitude-Mathf.Lerp(baseRadius,tipRadius,along);
         }
 
+        static Vector3 CubicPoint(Vector3 a,Vector3 b,Vector3 c,Vector3 d,float t)
+        {
+            float u=1-t;
+            return u*u*u*a+3*u*u*t*b+3*u*t*t*c+t*t*t*d;
+        }
+
+        static float CurvedTube(Vector3 point,Vector3 a,Vector3 b,Vector3 c,Vector3 d,float rootRadius,float tipRadius)
+        {
+            const int segments=16;
+            float distance=100f;
+            var previous=a;
+            for(int i=1;i<=segments;i++)
+            {
+                float t=i/(float)segments;
+                var next=CubicPoint(a,b,c,d,t);
+                distance=Mathf.Min(distance,TaperedCapsule(point,previous,next,
+                    Mathf.Lerp(rootRadius,tipRadius,(i-1)/(float)segments),Mathf.Lerp(rootRadius,tipRadius,t)));
+                previous=next;
+            }
+            return distance;
+        }
+
         static float Leaf(Vector3 point,Vector3 center,Vector3 radius,float angle)
         {
             var offset=point-center;
@@ -62,7 +84,9 @@ namespace PeacePark
                     float head=Oval(p,0,3.08f,.08f,.94f,.83f,.89f);
                     float ear=Leaf(symmetric,new Vector3(1.05f,3.02f,.08f),new Vector3(.60f,.73f,.26f),-.26f);
                     head=Blend(head,ear,.20f);
-                    float trunk=TaperedCapsule(p,new Vector3(0,2.99f,-.76f),new Vector3(0,1.90f,-.96f),.30f,.155f);
+                    // A hanging curve with a small forward curl, rather than a straight cone.
+                    float trunk=CurvedTube(p,new Vector3(0,2.99f,-.76f),new Vector3(0,2.52f,-.92f),
+                        new Vector3(.08f,1.72f,-.84f),new Vector3(.27f,1.95f,-1.38f),.30f,.135f);
                     return Blend(head,trunk,.21f);
                 }
                 case AnimalKind.Triceratops:
@@ -125,17 +149,20 @@ namespace PeacePark
                     return TaperedCapsule(p,new Vector3(.08f,1.37f,.36f),new Vector3(.80f,.81f,1.42f),.23f,.055f);
                 case AnimalKind.Hippo:
                     return TaperedCapsule(p,new Vector3(0,1.41f,.43f),new Vector3(.15f,1.12f,.83f),.096f,.053f);
-                case AnimalKind.Giraffe:
                 case AnimalKind.Elephant:
                 {
-                    float endX=kind==AnimalKind.Giraffe?.41f:-.30f;
-                    float endY=kind==AnimalKind.Giraffe?.78f:.88f;
-                    float endZ=kind==AnimalKind.Giraffe?.80f:.72f;
-                    var joint=new Vector3(endX*.46f,1.17f,.72f);
-                    var end=new Vector3(endX,endY,endZ);
-                    float tail=Capsule(p,new Vector3(0,1.45f,.39f),joint,.083f);
-                    tail=Blend(tail,Capsule(p,joint,end,.073f),.11f);
-                    return Blend(tail,Ellipsoid(p,end,new Vector3(.128f,.17f,.106f)),.08f);
+                    var end=new Vector3(.17f,.72f,.84f);
+                    float tail=CurvedTube(p,new Vector3(0,1.45f,.39f),new Vector3(0,1.28f,.80f),
+                        new Vector3(.11f,.98f,.85f),end,.078f,.048f);
+                    return Blend(tail,Ellipsoid(p,end,new Vector3(.080f,.12f,.075f)),.045f);
+                }
+                case AnimalKind.Giraffe:
+                {
+                    var end=new Vector3(.12f,.60f,.77f);
+                    float tail=CurvedTube(p,new Vector3(0,1.49f,.38f),new Vector3(.01f,1.43f,.83f),
+                        new Vector3(.06f,.96f,.70f),end,.084f,.054f);
+                    var tuft=new Vector3(.14f,.52f,.78f);
+                    return Blend(tail,Ellipsoid(p,tuft,new Vector3(.083f,.155f,.077f)),.043f);
                 }
                 default:return 100f; // Adult frogs have no tail.
             }
@@ -250,7 +277,7 @@ namespace PeacePark
                         Eye(side*.425f,3.24f,false);
                         Feature(side*1.14f,3.03f,new Vector3(.44f,.54f,.048f),2,.025f,side*-15);
                         Feature(side*.65f,2.94f,new Vector3(.13f,.068f,.036f),2,.015f);
-                        Feature(side*.053f,1.855f,new Vector3(.027f,.031f,.014f),1,.006f);
+                        Feature(.27f+side*.045f,1.95f,new Vector3(.024f,.027f,.014f),1,.006f);
                     }
                     break;
                 case AnimalKind.Triceratops:
