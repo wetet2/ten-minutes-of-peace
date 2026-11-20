@@ -62,12 +62,10 @@ namespace PeacePark.Editor
             christmasVenue.Preview=Preview("Christmas");
             christmas.gameObject.SetActive(false);
             venues.Add(christmasVenue);
-            var beach=Group("Private beach venue",null,Vector3.zero);
-            SceneManager.MoveGameObjectToScene(beach.gameObject,scene);
-            var beachVenue=ParkBeachSetup.Create(beach);
-            beachVenue.Preview=Preview("Beach");
-            beach.gameObject.SetActive(false);
-            venues.Add(beachVenue);
+            var themePark=Group("Theme park venue",null,Vector3.zero);
+            SceneManager.MoveGameObjectToScene(themePark.gameObject,scene);
+            venues.Add(ParkThemeParkSetup.Create(themePark));
+            themePark.gameObject.SetActive(false);
             controller.Venues=venues.ToArray();
         }
 

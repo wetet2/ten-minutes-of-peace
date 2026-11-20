@@ -20,7 +20,7 @@ namespace PeacePark.Editor
         static readonly int[] GardenTreesAndFlowers = { 9, 13, 16, 10, 11, 9, 16, 13, 19, 9 };
         static readonly int[] MeadowTreesAndFlowers = { 26, 9, 7, 11, 13, 22, 16, 26, 19, 7 };
 
-        sealed class TreeSet
+        internal sealed class TreeSet
         {
             public readonly GameObject[] Prefabs;
             public readonly Bounds[] Bounds;
@@ -40,7 +40,28 @@ namespace PeacePark.Editor
             }
 
             public bool Ready => Array.TrueForAll(Bounds, bounds => bounds.size.y > 0);
+
+            internal void Plant(Transform parent, int index, float height, float maxWidth, Vector3 position, float yaw,
+                Dictionary<Material, Material> materials)
+            {
+                index %= Prefabs.Length;
+                var prefab = Prefabs[index];
+                var bounds = Bounds[index];
+                if (!prefab || bounds.size.y <= 0) return;
+                float scale = Mathf.Min(height / bounds.size.y, maxWidth / Mathf.Max(bounds.size.x, bounds.size.z));
+                var tree = Object.Instantiate(prefab, parent, false);
+                bool olyPoly = prefab.name.EndsWith("_Smooth", StringComparison.Ordinal);
+                tree.name = prefab.name + (olyPoly ? " (OlyPoly)" : " (Trees & Flowers)");
+                var rotation = Quaternion.Euler(0, yaw, 0);
+                tree.transform.localScale = Vector3.one * scale;
+                tree.transform.localRotation = rotation;
+                var baseCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+                tree.transform.localPosition = position - rotation * baseCenter * scale;
+                if (olyPoly) ApplyMaterials(tree, materials);
+            }
         }
+
+        internal static TreeSet LoadGardenTrees() => new TreeSet(GardenTrees, GardenTreesAndFlowers);
 
         internal static GameObject LoadTree(int number) =>
             AssetDatabase.LoadAssetAtPath<GameObject>(PrefabFolder + $"Tree_{number}_Smooth.prefab");
@@ -50,7 +71,7 @@ namespace PeacePark.Editor
             var roots = scene.GetRootGameObjects();
             var park = Array.Find(roots, root => root.name == "Peace Park");
             var meadow = Array.Find(roots, root => root.name == "Storybook countryside");
-            var gardenTrees = new TreeSet(GardenTrees, GardenTreesAndFlowers);
+            var gardenTrees = LoadGardenTrees();
             var meadowTrees = new TreeSet(MeadowTrees, MeadowTreesAndFlowers);
             if (!park || !meadow || !gardenTrees.Ready || !meadowTrees.Ready) return 0;
             var materials = new Dictionary<Material, Material>();
@@ -137,22 +158,8 @@ namespace PeacePark.Editor
         }
 
         static void Plant(Transform parent, TreeSet trees, int index, float height, Vector3 position, float yaw,
-            Dictionary<Material, Material> materials)
-        {
-            index %= trees.Prefabs.Length;
-            var prefab = trees.Prefabs[index];
-            var bounds = trees.Bounds[index];
-            float scale = TreeScale * Mathf.Min(height / bounds.size.y, 3.75f / Mathf.Max(bounds.size.x, bounds.size.z));
-            var tree = Object.Instantiate(prefab, parent, false);
-            bool olyPoly = prefab.name.EndsWith("_Smooth", StringComparison.Ordinal);
-            tree.name = prefab.name + (olyPoly ? " (OlyPoly)" : " (Trees & Flowers)");
-            var rotation = Quaternion.Euler(0, yaw, 0);
-            tree.transform.localScale = Vector3.one * scale;
-            tree.transform.localRotation = rotation;
-            var baseCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
-            tree.transform.localPosition = position - rotation * baseCenter * scale;
-            if (olyPoly) ApplyMaterials(tree, materials);
-        }
+            Dictionary<Material, Material> materials) =>
+            trees.Plant(parent, index, height * TreeScale, 3.75f * TreeScale, position, yaw, materials);
 
         internal static void ApplyMaterials(GameObject tree, Dictionary<Material, Material> replacements)
         {

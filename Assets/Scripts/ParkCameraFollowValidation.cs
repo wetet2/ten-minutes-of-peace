@@ -22,7 +22,6 @@ namespace PeacePark
             if(Array.IndexOf(Environment.GetCommandLineArgs(),"-peaceParkFollowCheck")<0)return;
             new GameObject("Camera follow validation").AddComponent<ParkCameraFollowValidation>();
         }
-        void OnEnable()=>Application.logMessageReceived+=Log;
         void OnDisable()=>Application.logMessageReceived-=Log;
         void Log(string message,string stack,LogType type)
         {if(type==LogType.Exception||type==LogType.Error)EditorApplication.delayCall+=()=>EditorApplication.Exit(1);}
@@ -38,9 +37,19 @@ namespace PeacePark
         }
         IEnumerator Start()
         {
-            yield return null;
-            var park=FindAnyObjectByType<ParkPlayground>();
-            Require(park&&park.IsReady,"Park startup failed");
+            float deadline=Time.realtimeSinceStartup+30;
+            ParkPlayground park;
+            while(!(park=FindAnyObjectByType<ParkPlayground>())||!park.IsReady)
+            {
+                if(Time.realtimeSinceStartup>deadline)
+                {
+                    Debug.LogError("Camera follow check could not start the park");
+                    EditorApplication.Exit(1);
+                    yield break;
+                }
+                yield return null;
+            }
+            Application.logMessageReceived+=Log;
             park.ManualSimulation=true;park.ShowPark();
             var orbit=park.OrbitCamera;var camera=orbit.GetComponent<Camera>();orbit.enabled=false;
             var texture=new Texture2D(2,2);texture.SetPixels(new[]{Color.cyan,Color.cyan,Color.cyan,Color.cyan});texture.Apply();
@@ -101,42 +110,48 @@ namespace PeacePark
             a.gameObject.SetActive(false);Step(orbit,1);
             Require(!orbit.FollowTarget&&orbit.IsReturning,"Missing target did not release the camera");
             a.gameObject.SetActive(true);Step(orbit,360);
-            orbit.ToggleAnimalFollow(a);Step(orbit,60);orbit.ResetView();
+            orbit.ToggleAnimalFollow(a);Step(orbit,60);
+            var beforeReset=orbit.transform.position;
+            orbit.ResetView();
+            Require(!orbit.FollowTarget&&Vector3.Distance(beforeReset,orbit.transform.position)<.001f,"Starting reset snapped out of tracking");
+            Step(orbit,60);
             Require(!orbit.FollowTarget&&!orbit.IsReturning&&Mathf.Abs(orbit.distance-originalDistance)<.001f,"Reset did not clear tracking");
 
-            int beach=Array.FindIndex(park.Venues,v=>v.Name=="해변가");
-            orbit.ToggleAnimalFollow(a);park.ChangeVenue(beach);
+            int square=Array.FindIndex(park.Venues,v=>v.Name=="시계탑 광장");
+            Require(square>=0,"Clock Tower Square is missing");
+            orbit.ToggleAnimalFollow(a);park.ChangeVenue(square);
             Require(!orbit.FollowTarget&&!orbit.IsReturning,"Venue switch did not clear tracking");
             originalPosition=orbit.transform.position;originalRotation=orbit.transform.rotation;
             orbit.ToggleAnimalFollow(a);Step(orbit,1);
-            Require(Vector3.Distance(originalPosition,orbit.transform.position)<5,"Beach focus-height transition snapped");
-            Step(orbit,360);Capture(camera,"beach-following");
+            Require(Vector3.Distance(originalPosition,orbit.transform.position)<5,"Square follow transition snapped");
+            Step(orbit,360);
             orbit.ReleaseAnimalFollow();Step(orbit,480);
-            Require(Vector3.Distance(originalPosition,orbit.transform.position)<.01f&&Quaternion.Angle(originalRotation,orbit.transform.rotation)<.05f,"Beach return did not restore the wide view");
-            // A manual gesture during zoom-out must preserve the beach's displayed
-            // low aim instead of reapplying its high mountain overview offset.
+            Require(Vector3.Distance(originalPosition,orbit.transform.position)<.01f&&Quaternion.Angle(originalRotation,orbit.transform.rotation)<.05f,"Square return did not restore the wide view");
+            // A manual gesture must preserve the currently displayed aim while the camera is returning.
             orbit.ToggleAnimalFollow(a);Step(orbit,300);orbit.ReleaseAnimalFollow();Step(orbit,20);
             var interruptedPosition=orbit.transform.position;
             orbit.ApplyTwoFingerGesture(Vector2.zero,900,100,100);Step(orbit,1);
-            Require(!orbit.IsReturning&&Vector3.Distance(interruptedPosition,orbit.transform.position)<.001f,"Interrupting the beach return caused a jump");
+            Require(!orbit.IsReturning&&Vector3.Distance(interruptedPosition,orbit.transform.position)<.001f,"Interrupting the square return caused a jump");
             orbit.ToggleAnimalFollow(a);Step(orbit,200);orbit.ReleaseAnimalFollow();Step(orbit,400);
             Require(Vector3.Distance(interruptedPosition,orbit.transform.position)<.01f,"A follow from an interrupted view lost the saved aim");
             orbit.ResetView();
+            Step(orbit,60);
             orbit.ToggleAnimalFollow(a);Step(orbit,60);
             typeof(ParkPlayground).GetField("fadingAnimal",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(park,a);
             Step(orbit,1);Require(!orbit.FollowTarget&&orbit.IsReturning,"Fading animal kept tracking");
             typeof(ParkPlayground).GetField("fadingAnimal",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(park,null);
             Step(orbit,400);
-            Require(park.TrySubmit((int)AnimalKind.Rabbit,png,png,2),"Beach arrival submission failed");
+            park.ChangeVenue(0);
+            Require(park.TrySubmit((int)AnimalKind.Rabbit,png,png,0),"Garden arrival submission failed");
             park.Advance(.01f);
             var arriving=park.Animals[park.Animals.Count-1];
             Require(arriving.State==ParkRabbitState.OpeningDoor&&!park.CanFollowAnimal(arriving),"Hidden animal was selectable");
             for(int i=0;i<200&&!arriving.Character.Skin.enabled;i++)park.Advance(.02f);
             Require(arriving.State==ParkRabbitState.WalkingOut&&park.CanFollowAnimal(arriving),"First visible arrival was not selectable");
             var headBone=arriving.Character.Skin.bones[1];
-            Vector2 peek=camera.WorldToScreenPoint(headBone.TransformPoint(Vector3.up*.65f));
-            Require(orbit.AnimalAt(peek)==arriving,"First peeking head did not receive its screen hit");
-            orbit.BeginAnimalTap(peek,0);orbit.EndAnimalTap(peek,0);
+            Vector2 head=camera.WorldToScreenPoint(headBone.TransformPoint(Vector3.up*.65f));
+            Require(orbit.AnimalAt(head)==arriving,"First visible head did not receive its screen hit");
+            orbit.BeginAnimalTap(head,0);orbit.EndAnimalTap(head,0);
             bool sawWave=false;
             for(int i=0;i<600&&arriving.State!=ParkRabbitState.Wandering;i++)
             {
@@ -149,7 +164,7 @@ namespace PeacePark
             Step(orbit,400);
             orbit.ToggleAnimalFollow(a);Step(orbit,120);park.ShowDrawing();
             Require(!orbit.FollowTarget&&!orbit.IsReturning,"Coloring view retained tracking");
-            Debug.Log("CAMERA FOLLOW PASS: screen picking, smooth zoom in/out, movement, bob isolation, target switch, gestures, reset, missing target, venue/view changes and beach focus.");
+            Debug.Log("CAMERA FOLLOW PASS: screen picking, smooth zoom in/out, movement, bob isolation, target switch, gestures, reset, missing target, venue/view changes and immediate arrival selection.");
             EditorApplication.Exit(0);
         }
         static void Capture(Camera camera,string name)

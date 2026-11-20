@@ -14,9 +14,14 @@ namespace PeacePark
         const float HeadCenterY=2.85f;
         const float HeadDepth=.96f;
         const float PreviousHeadDepth=.62f;
-        // The baked rigs include shoulder corrections for walking and waving.
-        public const int GeometryVersion=16;
-        public static int GeometryVersionFor(AnimalKind kind)=>GeometryVersion+(kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?1:0);
+        // The baked rigs include shoulder corrections generated from the current gait and wave poses.
+        public const int GeometryVersion=17;
+        public static int GeometryVersionFor(AnimalKind kind)=>GeometryVersion+(kind switch
+        {
+            AnimalKind.Tiger=>2,
+            AnimalKind.Elephant or AnimalKind.Giraffe or AnimalKind.Crocodile or AnimalKind.Hippo=>1,
+            _=>0
+        });
         public const float ShoulderHeight=2f;
         const float LegScale=.9f;
         const float TemplateHipHeight=1.26f;
@@ -67,6 +72,10 @@ namespace PeacePark
         static float Field(Vector3 p,AnimalKind kind)
         {
             float d=Torso(p);
+            if(kind==AnimalKind.Hippo&&p.y<2.27f)
+                d=Blend(d,Oval(p,0,1.50f,-.052f,.803f,.669f,.573f),.135f);
+            if(kind==AnimalKind.Crocodile)
+                d=Blend(d,CrocodileBack(p),.145f);
             // Keep a short visible neck between the shoulders and chin, without widening
             // the join into a direct head-to-torso union.
             d=Blend(d,Capsule(p,new Vector3(0,2.12f,0),new Vector3(0,2.46f,0),.31f),.14f);
@@ -148,8 +157,8 @@ namespace PeacePark
             const float step=.065f;
             int nx=kind==AnimalKind.Elephant?59:53;
             int ny=kind==AnimalKind.Giraffe?88:81;
-            int nz=kind==AnimalKind.Crocodile?57:kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?53:
-                kind==AnimalKind.Triceratops?51:kind==AnimalKind.Tiger?41:kind==AnimalKind.Hippo?47:37;
+            int nz=kind==AnimalKind.Crocodile?63:kind==AnimalKind.Elephant||kind==AnimalKind.Giraffe?53:
+                kind==AnimalKind.Triceratops?51:kind==AnimalKind.Tiger?45:kind==AnimalKind.Hippo?47:37;
             var origin=new Vector3(-(nx-1)/2*step,-.08f,-(nz-1)/2*step);
             var points=new Vector3[nx*ny*nz];var values=new float[points.Length];
             for(int z=0;z<nz;z++)for(int y=0;y<ny;y++)for(int x=0;x<nx;x++)
@@ -217,15 +226,23 @@ namespace PeacePark
                 Tetra(a,b,d,h);Tetra(a,d,c,h);Tetra(a,c,g,h);Tetra(a,g,e,h);Tetra(a,e,f,h);Tetra(a,f,b,h);
             }
             skinVertexCount=vertices.Count;skinTriangles=faces.ToArray();
-            var submeshes=new[]{faces,new List<int>(),new List<int>(),new List<int>()};
-            void Detail(Vector3 center,Vector3 radius,int material,float roll,int bone)
+            var submeshes=new List<int>[kind is AnimalKind.Tiger or AnimalKind.Crocodile?5:4];
+            submeshes[0]=faces;
+            for(int i=1;i<submeshes.Length;i++)submeshes[i]=new List<int>();
+            void Detail(Vector3 center,Vector3 radius,int material,float roll,int bone) =>
+                FeatureMesh(center,radius,material,roll,bone,false);
+            void FeatureMesh(Vector3 center,Vector3 radius,int material,float roll,int bone,bool roundedIncisor)
             {
                 int start=vertices.Count;const int rings=10,segments=16;
                 var rotation=Quaternion.Euler(0,0,roll);
+                float RoundAxis(float value,float exponent)=>Mathf.Sign(value)*Mathf.Pow(Mathf.Abs(value),exponent);
                 for(int y=0;y<=rings;y++)for(int x=0;x<=segments;x++)
                 {
                     float v=y*Mathf.PI/rings,u=x*Mathf.PI*2/segments;var n=new Vector3(Mathf.Sin(v)*Mathf.Cos(u),Mathf.Cos(v),Mathf.Sin(v)*Mathf.Sin(u));
-                    vertices.Add(center+rotation*Vector3.Scale(n,radius));normals.Add(rotation*new Vector3(n.x/radius.x,n.y/radius.y,n.z/radius.z).normalized);
+                    var surface=roundedIncisor?new Vector3(RoundAxis(n.x,.48f),RoundAxis(n.y,.48f),RoundAxis(n.z,.48f)):n;
+                    var normal=roundedIncisor?new Vector3(RoundAxis(n.x,1.52f),RoundAxis(n.y,1.52f),RoundAxis(n.z,1.52f)):n;
+                    vertices.Add(center+rotation*Vector3.Scale(surface,radius));
+                    normals.Add(rotation*new Vector3(normal.x/radius.x,normal.y/radius.y,normal.z/radius.z).normalized);
                     weights.Add(new BoneWeight{boneIndex0=bone,weight0=1});uv.Add(Vector2.zero);sides.Add(Vector2.zero);
                     restPositions.Add(center);
                 }
@@ -238,7 +255,8 @@ namespace PeacePark
                 center.z-=(HeadDepth-PreviousHeadDepth)*HeadSection(center);
                 Detail(center+Vector3.up*HeadLift,radius,material,0,1);
             }
-            if(kind!=AnimalKind.Rabbit)AddSpeciesDetails(kind,Detail);
+            if(kind!=AnimalKind.Rabbit)AddSpeciesDetails(kind,Detail,
+                (center,radius)=>FeatureMesh(center,radius,3,0,1,true));
             else
             {
                 for(int side=-1;side<=1;side+=2)
@@ -255,8 +273,8 @@ namespace PeacePark
             }
             var mesh=new Mesh{name=kind+" continuous skinned surface",
                 indexFormat=vertices.Count<=ushort.MaxValue?IndexFormat.UInt16:IndexFormat.UInt32};
-            mesh.SetVertices(vertices);mesh.SetNormals(normals);mesh.SetUVs(0,uv);mesh.SetUVs(1,sides);mesh.SetUVs(2,restPositions);mesh.boneWeights=weights.ToArray();mesh.subMeshCount=4;
-            for(int i=0;i<4;i++)mesh.SetTriangles(submeshes[i],i);mesh.RecalculateBounds();
+            mesh.SetVertices(vertices);mesh.SetNormals(normals);mesh.SetUVs(0,uv);mesh.SetUVs(1,sides);mesh.SetUVs(2,restPositions);mesh.boneWeights=weights.ToArray();mesh.subMeshCount=submeshes.Length;
+            for(int i=0;i<submeshes.Length;i++)mesh.SetTriangles(submeshes[i],i);mesh.RecalculateBounds();
             RabbitShoulderCorrective.SmoothWeights(mesh,skinVertexCount,skinTriangles);return mesh;
         }
     }

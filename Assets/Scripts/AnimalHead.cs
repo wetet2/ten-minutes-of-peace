@@ -38,19 +38,125 @@ namespace PeacePark
             return center+lift*t*t;
         }
 
-        static void Tooth(ref Color face,float x,float y,float toothX,float rootY,float width,float length,bool rounded)
+        static float RoundedRectangle(float x,float y,float cx,float cy,float halfWidth,float halfHeight,float radius)
+        {
+            var q=new Vector2(Mathf.Abs(x-cx)-halfWidth+radius,Mathf.Abs(y-cy)-halfHeight+radius);
+            return Vector2.Max(q,Vector2.zero).magnitude+Mathf.Min(Mathf.Max(q.x,q.y),0)-radius;
+        }
+
+        static void Tooth(ref Color face,float x,float y,float toothX,float rootY,float width,float length)
         {
             if(y>rootY)return;
             float depth=Mathf.Clamp01((rootY-y)/length);
-            float edge=Mathf.Lerp(width,width*(rounded?.78f:.36f),depth);
+            float edge=Mathf.Lerp(width,width*.32f,depth);
             float tip=rootY-length;
             float distance=Mathf.Max(Mathf.Abs(x-toothX)-edge,tip-y);
             // The mouth line is the top edge of the tooth.
             Ring(ref face,distance,.0019f);
         }
+
+        static float Tiger(float x,float y,bool back,ref Color face)
+        {
+            const float center=.5f;
+            float side=x<center?-1f:1f;
+            float offset=Mathf.Abs(x-center);
+            float shape=E(x,y,center,.764f,.274f,.157f);
+            shape=Join(shape,E(offset,y,.133f,.726f,.138f,.099f),.024f);
+            shape=Join(shape,E(offset,y,.209f,.877f,.071f,.066f),.016f);
+            if(shape>.006f)return shape;
+
+            for(int stripe=0;stripe<3;stripe++)
+            {
+                float tipY=.770f-stripe*.045f;
+                var from=new Vector2(center+side*.274f,tipY+.024f);
+                var to=new Vector2(center+side*(.200f+stripe*.009f),tipY);
+                Fill(ref face,Horn(x,y,from,to,.010f,.004f),ink);
+            }
+            for(int stripe=0;stripe<3;stripe++)
+            {
+                float stripeX=center+(stripe-1)*.073f;
+                float rootY=.920f-Mathf.Abs(stripe-1)*.008f;
+                Fill(ref face,Horn(x,y,new Vector2(stripeX,rootY),
+                    new Vector2(Mathf.Lerp(stripeX,center,.16f),rootY-.047f),.011f,.004f),ink);
+            }
+            if(back)return shape;
+
+            Eye(ref face,x,y,center+side*.114f,.761f,.026f);
+            Ring(ref face,E(offset,y,.210f,.886f,.043f,.038f),.0029f);
+
+            float pads=Join(E(offset,y,.053f,.689f,.092f,.048f),E(x,y,center,.676f,.108f,.038f),.015f);
+            Ring(ref face,pads,.0027f);
+            Fill(ref face,E(x,y,center,.714f,.031f,.017f),ink);
+            for(int dot=0;dot<3;dot++)
+                Fill(ref face,E(offset,y,.063f+dot*.021f,.692f+(dot%2)*.011f,.0045f,.0045f),ink);
+            const float smileWidth=.086f,smileY=.683f;
+            float mouthX=Mathf.Min(offset,smileWidth);
+            float mouthY=smileY-.020f*Mathf.Sin(mouthX/smileWidth*Mathf.PI);
+            Fill(ref face,new Vector2(offset-mouthX,y-mouthY).magnitude-.0031f,ink);
+            Fill(ref face,Line(x,y,center,.708f,center,smileY)-.0027f,ink);
+            return shape;
+        }
+
+        static float Crocodile(float x,float y,bool back,ref Color face)
+        {
+            const float center=.5f;
+            float side=Mathf.Sign(x-center);
+            float offset=Mathf.Abs(x-center);
+            float shape=E(x,y,center,.747f,.254f,.137f);
+            shape=Join(shape,RoundedRectangle(x,y,center,.694f,.204f,.081f,.054f),.018f);
+            shape=Join(shape,RoundedRectangle(x,y,center,.641f,.177f,.049f,.040f),.016f);
+            shape=Join(shape,E(offset,y,.162f,.841f,.089f,.073f),.018f);
+            if(back||shape>.006f)return shape;
+
+            const float eyeY=.846f;
+            Ring(ref face,E(offset,y,.162f,eyeY,.048f,.040f),.0032f);
+            Fill(ref face,E(offset,y,.162f,eyeY,.0105f,.030f),ink);
+            Fill(ref face,E(x,y,center+side*.162f-.003f,eyeY+.012f,.004f,.004f),Color.white);
+            Fill(ref face,E(offset,y,.087f,.744f,.022f,.0115f,-.24f),ink);
+
+            float snoutX=Mathf.Clamp(x,.335f,.665f);
+            float snoutY=SmileHeight(snoutX,.165f,.778f,-.062f);
+            Fill(ref face,new Vector2(x-snoutX,y-snoutY).magnitude-.0026f,ink);
+            float lipX=Mathf.Clamp(x,.309f,.691f);
+            float lipY=SmileHeight(lipX,.191f,.656f,.022f);
+            Fill(ref face,new Vector2(x-lipX,y-lipY).magnitude-.0045f,ink);
+            for(int tooth=0;tooth<3;tooth++)
+            {
+                float toothX=center+side*(.085f+tooth*.044f);
+                Tooth(ref face,x,y,toothX,SmileHeight(toothX,.191f,.656f,.022f),.012f-tooth*.0012f,.028f-tooth*.0032f);
+            }
+            return shape;
+        }
+
+        static float Hippo(float x,float y,bool back,ref Color face)
+        {
+            const float center=.5f;
+            float offset=Mathf.Abs(x-center);
+            float side=Mathf.Sign(x-center);
+            float shape=E(x,y,center,.772f,.254f,.145f);
+            shape=Join(shape,RoundedRectangle(x,y,center,.715f,.273f,.084f,.070f),.021f);
+            shape=Join(shape,RoundedRectangle(x,y,center,.645f,.222f,.064f,.054f),.023f);
+            shape=Join(shape,E(offset,y,.219f,.889f,.049f,.056f,.26f),.012f);
+            if(back||shape>.006f)return shape;
+
+            Ring(ref face,E(offset,y,.220f,.890f,.027f,.033f,.26f),.0026f);
+            Eye(ref face,x,y,center+side*.150f,.799f,.020f);
+            Fill(ref face,E(offset,y,.141f,.733f,.038f,.017f,-.20f),ink);
+            float tooth=RoundedRectangle(offset,y,.049f,.647f,.026f,.024f,.008f);
+            float lipX=Mathf.Clamp(x,.278f,.722f);
+            float lipY=SmileHeight(lipX,.222f,.658f,.031f);
+            if(tooth>-.002f)
+                Fill(ref face,new Vector2(x-lipX,y-lipY).magnitude-.0050f,ink);
+            Ring(ref face,tooth,.0028f);
+            return shape;
+        }
+
         public static void Sample(int kind,float x,float y,bool back,out float shape,out Color face)
         {
             face=Color.clear;
+            if(((AnimalKind)kind is AnimalKind.Tiger or AnimalKind.Crocodile or AnimalKind.Hippo)&&
+                (y<.54f||y>.98f||x<.12f||x>.88f))
+            {shape=1;return;}
             switch(kind)
             {
                 case 0: // Bear: round ears and a broad oval muzzle.
@@ -64,22 +170,8 @@ namespace PeacePark
                     Ring(ref face,Line(x,y,.5f,.69f,.5f,.673f),.0022f);
                     Smile(ref face,x,y,.478f,.678f,.022f);Smile(ref face,x,y,.522f,.678f,.022f);
                     break;
-                case 1: // Tiger: full cheeks, little rounded ears, forehead and cheek stripes.
-                    shape=E(x,y,.5f,.738f,.258f,.157f);
-                    shape=Join(shape,E(x,y,.32f,.855f,.06f,.05f));shape=Join(shape,E(x,y,.68f,.855f,.06f,.05f));
-                    shape=Join(shape,E(x,y,.28f,.686f,.055f,.047f));shape=Join(shape,E(x,y,.72f,.686f,.055f,.047f));
-                    if(!back)
-                    {
-                        Ring(ref face,E(x,y,.32f,.855f,.034f,.026f));Ring(ref face,E(x,y,.68f,.855f,.034f,.026f));
-                        Ring(ref face,Mathf.Min(E(x,y,.462f,.68f,.064f,.044f),E(x,y,.538f,.68f,.064f,.044f)));
-                        Eye(ref face,x,y,.401f,.755f);Eye(ref face,x,y,.599f,.755f);
-                        Fill(ref face,E(x,y,.5f,.7f,.023f,.014f),rose);
-                        Smile(ref face,x,y,.5f,.669f,.03f);
-                    }
-                    Fill(ref face,E(x,y,.5f,.853f,.012f,.035f),ink);
-                    Fill(ref face,E(x,y,.455f,.859f,.009f,.025f,-.4f),ink);Fill(ref face,E(x,y,.545f,.859f,.009f,.025f,.4f),ink);
-                    for(int side=-1;side<=1;side+=2)for(int j=0;j<3;j++)
-                        Fill(ref face,E(x,y,.5f+side*(.22f-j*.008f),.77f-j*.037f,.035f-j*.004f,.007f,side*(.18f-j*.14f)),ink);
+                case (int)AnimalKind.Tiger:
+                    shape=Tiger(x,y,back,ref face);
                     break;
                 case 2: // Rabbit: long oval ears, small muzzle, whiskers and pink nose.
                     shape=E(x,y,.5f,.731f,.255f,.156f);
@@ -180,45 +272,10 @@ namespace PeacePark
                     Smile(ref face,x,y,.5f,.689f,.067f);
                     break;
                 case (int)AnimalKind.Crocodile:
-                    float snout=E(x,y,.5f,.677f,.220f,.080f);
-                    shape=Join(E(x,y,.5f,.752f,.230f,.139f),snout,.021f);
-                    for(int side=-1;side<=1;side+=2)
-                    {
-                        float cx=.5f+side*.137f;
-                        shape=Join(shape,E(x,y,cx,.845f,.069f,.066f));
-                        if(back)continue;
-                        Eye(ref face,x,y,cx,.834f,.017f);
-                        Fill(ref face,E(x,y,.5f+side*.108f,.716f,.012f,.007f,side*.22f),ink);
-                        float toothX=.5f+side*.129f;
-                        Tooth(ref face,x,y,toothX,SmileHeight(x,.183f,.654f,.023f),.0115f,.024f,false);
-                    }
-                    if(!back)
-                    {
-                        float mouthX=Mathf.Clamp(x,.317f,.683f);
-                        float mouthY=SmileHeight(mouthX,.183f,.654f,.023f);
-                        Fill(ref face,new Vector2(x-mouthX,y-mouthY).magnitude-.0027f,ink);
-                    }
+                    shape=Crocodile(x,y,back,ref face);
                     break;
                 case (int)AnimalKind.Hippo:
-                    float hippoMuzzle=E(x,y,.5f,.695f,.228f,.080f);
-                    shape=Join(E(x,y,.5f,.768f,.215f,.143f),hippoMuzzle,.023f);
-                    shape=Join(shape,E(x,y,.5f,.643f,.144f,.062f),.019f);
-                    for(int side=-1;side<=1;side+=2)
-                    {
-                        float cx=.5f+side*.172f;
-                        shape=Join(shape,E(x,y,cx,.877f,.047f,.044f));
-                        if(back)continue;
-                        Ring(ref face,E(x,y,cx,.880f,.024f,.021f));
-                        Eye(ref face,x,y,.5f+side*.112f,.796f,.014f);
-                        Fill(ref face,E(x,y,.5f+side*.121f,.714f,.019f,.010f,side*.25f),ink);
-                        Tooth(ref face,x,y,.5f+side*.043f,SmileHeight(x,.151f,.655f,.024f),.016f,.026f,true);
-                    }
-                    if(!back)
-                    {
-                        float mouthX=Mathf.Clamp(x,.349f,.651f);
-                        float mouthY=SmileHeight(mouthX,.151f,.655f,.024f);
-                        Fill(ref face,new Vector2(x-mouthX,y-mouthY).magnitude-.0027f,ink);
-                    }
+                    shape=Hippo(x,y,back,ref face);
                     break;
                 case (int)AnimalKind.Gorilla:
                     shape=Join(E(x,y,.5f,.775f,.226f,.154f),E(x,y,.5f,.686f,.200f,.101f),.031f);

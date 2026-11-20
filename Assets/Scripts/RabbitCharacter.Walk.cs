@@ -13,15 +13,15 @@ namespace PeacePark
 
         readonly struct WalkGait
         {
-            public readonly float Stride, Stance, Lift, BodyRise, ArmSwing, Lean, Sway, Twist, HeadNod, HeadLag;
+            public readonly float Stride, Stance, Lift, Rebound, ArmSwing, Lean, Sway, Twist, HeadNod, HeadLag;
 
-            public WalkGait(float stride, float stance, float lift, float bodyRise, float armSwing,
+            public WalkGait(float stride, float stance, float lift, float rebound, float armSwing,
                 float lean, float sway, float twist, float headNod, float headLag)
             {
                 Stride = stride * StrideScale;
                 Stance = stance;
                 Lift = lift;
-                BodyRise = bodyRise;
+                Rebound = rebound;
                 ArmSwing = armSwing;
                 Lean = lean;
                 Sway = sway;
@@ -33,16 +33,16 @@ namespace PeacePark
 
         static WalkGait GaitFor(AnimalKind kind) => kind switch
         {
-            AnimalKind.Bear => new WalkGait(1.24f, .64f, .13f, .042f, 15, 4, 2.8f, 4, 1.1f, .55f),
-            AnimalKind.Tiger => new WalkGait(1.36f, .60f, .16f, .038f, 21, 6, 2, 7, 1, .78f),
-            AnimalKind.Frog => new WalkGait(.94f, .59f, .18f, .054f, 12, 6, 2.3f, 3, 1.6f, .50f),
-            AnimalKind.Giraffe => new WalkGait(1.50f, .61f, .14f, .036f, 11, 2, 1.8f, 4, .8f, 1.30f),
-            AnimalKind.Elephant => new WalkGait(1.53f, .65f, .11f, .040f, 10, 2, 2.6f, 3, 1, 1.16f),
-            AnimalKind.Triceratops => new WalkGait(1.19f, .64f, .13f, .044f, 11, 5, 2.4f, 3.2f, 1.2f, .27f),
-            AnimalKind.Crocodile => new WalkGait(1.31f, .63f, .12f, .030f, 13, 8, 2, 7, .9f, 1.05f),
-            AnimalKind.Hippo => new WalkGait(1.11f, .64f, .14f, .048f, 9, 3.5f, 3, 3.8f, 1.2f, .63f),
-            AnimalKind.Gorilla => new WalkGait(1.43f, .63f, .16f, .046f, 23, 10, 2.8f, 6, 1, .65f),
-            _ => new WalkGait(1.10f, .59f, .16f, .046f, 18, 4, 2.2f, 4, 1.3f, .88f)
+            AnimalKind.Bear => new WalkGait(1.24f, .466f, .199f, .235f, 18, 4, 2.8f, 4, 2.1f, .55f),
+            AnimalKind.Tiger => new WalkGait(1.36f, .446f, .257f, .263f, 23, 5, 2, 7, 2.3f, .78f),
+            AnimalKind.Frog => new WalkGait(.94f, .404f, .31f, .36f, 16, 5, 2.3f, 3, 3.4f, .50f),
+            AnimalKind.Giraffe => new WalkGait(1.50f, .456f, .23f, .198f, 15, 2, 1.8f, 4, 1.7f, 1.30f),
+            AnimalKind.Elephant => new WalkGait(1.53f, .477f, .171f, .173f, 13, 2, 2.6f, 3, 1.7f, 1.16f),
+            AnimalKind.Triceratops => new WalkGait(1.19f, .470f, .198f, .206f, 14, 4, 2.4f, 3.2f, 2f, .27f),
+            AnimalKind.Crocodile => new WalkGait(1.31f, .467f, .185f, .194f, 17, 6, 2, 7, 1.7f, 1.05f),
+            AnimalKind.Hippo => new WalkGait(1.11f, .474f, .184f, .203f, 13, 3.5f, 3, 3.8f, 1.9f, .63f),
+            AnimalKind.Gorilla => new WalkGait(1.43f, .453f, .231f, .254f, 25, 8, 2.8f, 6, 2f, .65f),
+            _ => new WalkGait(1.10f, .423f, .282f, .318f, 21, 4, 2.2f, 4, 3f, .88f)
         };
 
         WalkGait gait;
@@ -118,17 +118,24 @@ namespace PeacePark
                 skin.SetBlendShapeWeight(1, (1 + 99 * cycle) * strength);
             }
 
-            // Shift weight toward the planted foot. The body is lowest as support changes feet.
+            // Absorb each landing, then extend over the planted foot before a brief lift-off.
+            float halfStep = Mathf.Repeat(cycle, .5f);
+            float beat = Turn * (halfStep * 2 - .17f);
+            float rebound = gait.Rebound * strength;
+            float rise = rebound * (.08f - .5f * Mathf.Cos(beat));
+            float headRise = rebound * (.07f - .39f * Mathf.Cos(beat - gait.HeadLag * .58f));
+            float air = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(gait.Stance, .5f, halfStep));
+            model.localPosition += Vector3.up * ((.5f - gait.Stance) * .83f * air * air * strength);
+
             float midStance = phase - Mathf.PI * gait.Stance;
             float weightShift = Mathf.Cos(midStance);
-            float rise = gait.BodyRise * (.5f * Mathf.Cos(2 * midStance)) * strength;
             float counterSwing = Mathf.Cos(phase - .3f) * strength;
             float roll = gait.Sway * weightShift * strength;
-            float delayedBeat = Mathf.Sin(phase * 2 - gait.HeadLag) * strength;
+            float delayedBeat = Mathf.Sin(beat - gait.HeadLag * .58f) * strength;
             body.localPosition += new Vector3(-.009f * roll, rise, 0);
             body.localRotation = Quaternion.Euler(-gait.Lean * strength,
                 gait.Twist * counterSwing, roll);
-            head.localPosition += new Vector3(-.005f * roll, rise * .65f, 0);
+            head.localPosition += new Vector3(-.005f * roll, headRise, 0);
             head.localRotation = Quaternion.Euler(gait.HeadNod * delayedBeat - gait.Lean * .21f * strength,
                 gait.Twist * .36f * Mathf.Cos(phase - gait.HeadLag) * strength, -roll * .6f);
             leftShoulder.localPosition += Vector3.up * (rise - .006f * roll);

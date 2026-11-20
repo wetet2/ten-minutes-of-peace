@@ -47,8 +47,8 @@ namespace PeacePark.Editor
             if(report==null)return;
             foreach(var root in scene.GetRootGameObjects())foreach(var renderer in root.GetComponentsInChildren<MeshRenderer>(true))
             {
-                // SurfaceHeight reads the small path mesh once at startup.
-                if(renderer.name=="Winding path")
+                // SurfaceHeight reads these meshes in their original local coordinates.
+                if(renderer.name=="Winding path"||renderer.name=="Station boarding deck")
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var house=renderer.GetComponentInParent<ParkHouse>();
                 if(house&&(renderer==house.EntranceLightSpill||(house.DoorHinge&&renderer.transform.IsChildOf(house.DoorHinge))||
@@ -56,7 +56,17 @@ namespace PeacePark.Editor
                     (house.EntranceBell&&renderer.transform.IsChildOf(house.EntranceBell))))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var fountain=renderer.GetComponentInParent<ParkFountain>();
-                if(renderer.GetComponentInParent<ParkWaterfall>()||renderer.GetComponentInParent<ParkBeachWildlife>()||renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
+                var seesaw=renderer.GetComponentInParent<ParkSeesaw>();
+                if(seesaw&&renderer.transform.IsChildOf(seesaw.Beam))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                var forestRide=renderer.GetComponentInParent<ParkForestRide>();
+                if(forestRide&&forestRide.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                var sandSled=renderer.GetComponentInParent<ParkSandSled>();
+                if(sandSled&&sandSled.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                if(renderer.GetComponentInParent<ParkElephantTrain>()||renderer.GetComponentInParent<ParkThemeParkWheel>()||
+                    renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
                     renderer.GetComponentInParent<ParkRoundaboutSpin>()||renderer.GetComponentInParent<ParkTowerClock>()||
                     (fountain&&fountain.IsMovingPart(renderer.transform)))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}

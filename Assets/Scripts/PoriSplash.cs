@@ -19,21 +19,15 @@ namespace PeacePark
         const float SplashDuration = FadeOutStart + FadeOutDuration;
         const float MenuFadeInDuration = .45f;
         static readonly Color Background = new Color32(251, 245, 229, 255);
-        static readonly Color32[] LeafTints =
-        {
-            new Color32(188, 209, 174, 255), // Upper left, sage
-            new Color32(250, 255, 244, 255), // Upper right, mint
-            new Color32(156, 193, 164, 255), // Lower right, fern
-            new Color32(250, 239, 207, 255)  // Lower left, pistachio
-        };
         const float LogoWidth = 1000f;
+        const float CloverSize = 668f;
+        static readonly Vector2 LeafBase = new Vector2(.486f, .454f);
 
         readonly RawImage[] leaves = new RawImage[LeafCount];
         CanvasGroup overlay;
         RectTransform artwork;
         RawImage blackout;
         RawImage backdrop;
-        RawImage stem;
         RawImage wordmark;
         Action showMenu;
         bool revealingMenu;
@@ -46,7 +40,7 @@ namespace PeacePark
             var wordmark = Resources.Load<Texture2D>("PoriSplash/Wordmark");
             if (!clover || !wordmark) return null;
 
-            var screen = new GameObject("Pori Custom Splash", typeof(RectTransform));
+            var screen = new GameObject("Pori Games Splash", typeof(RectTransform));
             screen.transform.SetParent(parent, false);
             var splash = screen.AddComponent<PoriSplash>();
             splash.Build(clover, wordmark, showMenu);
@@ -77,35 +71,26 @@ namespace PeacePark
             artwork = new GameObject("Logo", typeof(RectTransform)).GetComponent<RectTransform>();
             artwork.SetParent(contentRect, false);
 
-            // The atlas contains complete silhouettes. Each leaf opens around its own base.
-            stem = AddPart("Stem", clover, 4, new Vector2(.59f, .88f), new Vector2(6, 9), 431, -4);
-            leaves[0] = AddPart("Upper Left", clover, 0, new Vector2(.51f, .16f), new Vector2(-7, 5), 378, 51);
-            leaves[1] = AddPart("Upper Right", clover, 1, new Vector2(.50f, .17f), new Vector2(6, 12), 364, -30);
-            leaves[2] = AddPart("Lower Right", clover, 2, new Vector2(.49f, .16f), new Vector2(12, -3), 350, -119);
-            leaves[3] = AddPart("Lower Left", clover, 3, new Vector2(.49f, .19f), new Vector2(-8, -6), 328, 145);
-            foreach (var leaf in leaves)
-            {
-                var shadow = leaf.gameObject.AddComponent<Shadow>();
-                shadow.effectColor = new Color32(47, 72, 43, 88);
-                // Keep the cast shadow down and to the right for every leaf orientation.
-                shadow.effectDistance = Quaternion.Inverse(leaf.rectTransform.localRotation) * new Vector3(3, -4, 0);
-            }
-            wordmark = AddImage("Pori Custom", artwork, lettering);
+            leaves[0] = AddLeaf("Upper Left", clover, 0);
+            leaves[1] = AddLeaf("Upper Right", clover, 1);
+            leaves[2] = AddLeaf("Lower Right", clover, 2);
+            leaves[3] = AddLeaf("Lower Left", clover, 3);
+            wordmark = AddImage("Pori Games", artwork, lettering);
             wordmark.rectTransform.sizeDelta = new Vector2(LogoWidth, LogoWidth * lettering.height / lettering.width);
             Layout();
             Animate(0);
             createdOnFrame = Time.frameCount;
         }
 
-        RawImage AddPart(string name, Texture2D atlas, int cell, Vector2 pivot, Vector2 basePosition, float size, float angle)
+        RawImage AddLeaf(string name, Texture2D atlas, int cell)
         {
             var part = AddImage(name, artwork, atlas);
-            part.uvRect = new Rect((cell % 3) / 3f, (1 - cell / 3) * .5f, 1f / 3f, .5f);
+            // All four atlas cells use the same artboard. The last leaf carries the curved stem.
+            part.uvRect = new Rect((cell % 2) * .5f, (1 - cell / 2) * .5f, .5f, .5f);
             var rect = part.rectTransform;
-            rect.pivot = pivot;
-            rect.anchoredPosition = basePosition;
-            rect.sizeDelta = Vector2.one * size;
-            rect.localRotation = Quaternion.Euler(0, 0, angle);
+            rect.pivot = LeafBase;
+            rect.sizeDelta = Vector2.one * CloverSize;
+            rect.anchoredPosition = (LeafBase - Vector2.one * .5f) * CloverSize + Vector2.down * 8f;
             return part;
         }
 
@@ -165,13 +150,8 @@ namespace PeacePark
                 float opening = Ease((elapsed - FirstLeafStart - i * LeafInterval) / LeafOpeningDuration);
                 var leaf = leaves[i];
                 leaf.rectTransform.localScale = Vector3.one * Mathf.Lerp(.12f, 1f, opening);
-                Color tint = LeafTints[i];
-                tint.a = opening;
-                leaf.color = tint;
+                leaf.color = new Color(1, 1, 1, opening);
             }
-            // Finish the stem with the last leaflet, before the lettering appears.
-            stem.rectTransform.localScale = leaves[3].rectTransform.localScale;
-            stem.color = new Color(1, 1, 1, leaves[3].color.a);
 
             float reveal = Ease((elapsed - WordmarkStart) / WordmarkDuration);
             wordmark.color = new Color(1, 1, 1, reveal);

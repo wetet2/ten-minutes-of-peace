@@ -19,6 +19,9 @@ for (const language of ['ko', 'en']) {
     assert.ok(html.includes(`<html lang="${language}">`));
     assert.ok(html.includes(`<h1 id="game-title">${title}</h1>`));
     assert.equal((html.match(/class="place" /g) || []).length, 6);
+    assert.match(html, /<img src="\/media\/theme-park\.jpg"/);
+    assert.ok(html.includes(`<h3>${language === 'ko' ? '놀이공원' : 'Amusement Park'}</h3>`));
+    assert.doesNotMatch(html, /\bbeach\b|해변가/i);
     assert.equal((html.match(/<li>/g) || []).length, 13); // Ten animals and three play steps.
     assert.equal((html.match(/href="\/TenMinutesOfPeace.apk" download/g) || []).length, 2);
     assert.ok(html.includes(language === 'ko' ? '버전 1.0.47 · 빌드 47' : 'Version 1.0.47 · Build 47'));

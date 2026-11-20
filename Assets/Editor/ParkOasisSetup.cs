@@ -27,24 +27,10 @@ namespace PeacePark.Editor
             var water = Group("Turquoise oasis water", oasis, Vector3.up * WaterLevel);
             water.gameObject.AddComponent<MeshFilter>().sharedMesh = WaterMesh();
             var waterRenderer = water.gameObject.AddComponent<MeshRenderer>();
-            waterRenderer.sharedMaterials = new[] {
-                Paint("Oasis blue", "#30ACA9"), Paint("Oasis turquoise", "#4CC5B6"), Paint("Oasis shallows", "#80D7BC")
-            };
+            waterRenderer.sharedMaterial = new Material(Shader.Find("PeacePark/Oasis Water")) { name = "Clear turquoise water" };
             waterRenderer.shadowCastingMode = ShadowCastingMode.Off;
 
-            var glints = new Pieces();
-            var oval = PrimitiveMesh(PrimitiveType.Sphere);
-            var foam = Paint("Oasis reflections", "#BDEBDD");
-            for (int i = 0; i < 7; i++)
-            {
-                var point = new Vector3(Mathf.Sin(i * 1.9f) * 2.95f, WaterLevel + .009f, Mathf.Cos(i * 2.1f) * 1.85f);
-                glints.Add(oval, foam, point, new Vector3(.34f + .16f * (i % 4), .013f, .055f), Quaternion.Euler(0, 11, 0));
-            }
-            var waterDetails = Group("Oasis reflections", oasis, Vector3.zero);
-            glints.Build(waterDetails);
-            foreach (var renderer in waterDetails.GetComponentsInChildren<MeshRenderer>())
-                renderer.shadowCastingMode = ShadowCastingMode.Off;
-
+            const float scaleFromOriginal = ParkDuneTerrain.OasisScale;
             var plants = Group("Oasis palms", oasis, Vector3.zero);
             foreach (var palm in Palms)
             {
@@ -55,11 +41,12 @@ namespace PeacePark.Editor
                 float scale = palm.Height / bounds.size.y;
                 var tree = Object.Instantiate(prefab, plants, false);
                 tree.name = palm.Model;
-                tree.transform.SetLocalPositionAndRotation(Shore(palm.X, palm.Z) - Vector3.up * (bounds.min.y * scale),
+                float x = palm.X * scaleFromOriginal, z = palm.Z * scaleFromOriginal;
+                tree.transform.SetLocalPositionAndRotation(Ground(x, z) - Vector3.up * (bounds.min.y * scale),
                     Quaternion.Euler(0, palm.Yaw, 0));
                 tree.transform.localScale = Vector3.one * scale;
                 foreach (var collider in tree.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(collider);
-                Block(palm.X, palm.Z, .38f + scale * .14f);
+                Block(x, z, .38f + scale * .14f);
             }
 
             var bank = Group("Oasis shore stones and reeds", oasis, Vector3.zero);
@@ -69,24 +56,35 @@ namespace PeacePark.Editor
                 float x = Mathf.Cos(angle) * ParkDuneTerrain.OasisRadii.x;
                 float z = Mathf.Sin(angle) * ParkDuneTerrain.OasisRadii.y;
                 float offset = 1.10f + .055f * (i % 3);
-                if (i % 4 != 2) Place(Rocks[i % Rocks.Length], x * offset, z * offset, .33f + .13f * (i % 4), i * 61);
-                Place(Reeds[i % Reeds.Length], x * 1.13f - .27f, z * 1.13f + .30f, .49f + .10f * (i % 3), i * 46);
+                if (i % 4 != 2) Place(bank, Rocks[i % Rocks.Length], x * offset, z * offset, .33f + .13f * (i % 4), i * 61);
+                Place(bank, Reeds[i % Reeds.Length], x * 1.13f - .27f, z * 1.13f + .30f, .49f + .10f * (i % 3), i * 46);
             }
-            Place(Rocks[1], -6f, .10f, .93f, 36);
-            Place(Rocks[2], 5.9f, 2.2f, .82f, 71);
+            Place(bank, Rocks[1], -6f * scaleFromOriginal, .10f * scaleFromOriginal, .93f, 36);
+            Place(bank, Rocks[2], 5.9f * scaleFromOriginal, 2.2f * scaleFromOriginal, .82f, 71);
 
-            void Place(string model, float x, float z, float height, float yaw)
+            var bed = Group("Oasis submerged stones", oasis, Vector3.zero);
+            var submerged = new[] {
+                new Vector2(-.66f,-.25f), new Vector2(-.58f,-.34f), new Vector2(.47f,-.45f),
+                new Vector2(.55f,-.39f), new Vector2(.65f,.17f), new Vector2(.52f,.28f), new Vector2(-.20f,.65f)
+            };
+            for (int i = 0; i < submerged.Length; i++)
+            {
+                var point = Vector2.Scale(submerged[i], ParkDuneTerrain.OasisRadii);
+                Place(bed, Rocks[i % Rocks.Length], point.x, point.y, .15f + .065f * (i % 3), 23 + i * 47);
+            }
+
+            void Place(Transform parent, string model, float x, float z, float height, float yaw)
             {
                 var prefab = Load(model);
                 if (!prefab || !prefab.TryGetComponent<MeshFilter>(out var filter) || !filter.sharedMesh) return;
                 var mesh = filter.sharedMesh;
                 if (mesh.bounds.size.y <= 0) return;
-                PlaceOnGround(model, mesh, prefab.GetComponent<MeshRenderer>().sharedMaterial, bank, Shore(x, z),
+                PlaceOnGround(model, mesh, prefab.GetComponent<MeshRenderer>().sharedMaterial, parent, Ground(x, z),
                     height, Quaternion.Euler(0, yaw, 0));
                 if (height >= .7f) Block(x, z, .5f);
             }
 
-            Vector3 Shore(float x, float z) => new Vector3(x, ParkDuneTerrain.Height(x + center.x, z + center.y) - .035f, z);
+            Vector3 Ground(float x, float z) => new Vector3(x, ParkDuneTerrain.Height(x + center.x, z + center.y) - .035f, z);
 
             void Block(float x, float z, float radius) =>
                 obstacles.Add(Rect.MinMaxRect(center.x + x - radius, center.y + z - radius,
@@ -97,43 +95,21 @@ namespace PeacePark.Editor
 
         static Mesh WaterMesh()
         {
-            const int segments = 64;
-            var rings = new[] { .68f, .91f, 1.25f };
-            var vertices = new Vector3[1 + rings.Length * segments];
-            var normals = new Vector3[vertices.Length];
-            normals[0] = Vector3.up;
-            var mesh = new Mesh { name = "Oasis water and shallows" };
-            for (int ring = 0; ring < rings.Length; ring++)
+            const int segments = 96;
+            var vertices = new Vector3[1 + segments];
+            var uv = new Vector2[vertices.Length];
+            var triangles = new int[segments * 3];
             for (int step = 0; step < segments; step++)
             {
                 float angle = step * Mathf.PI * 2 / segments;
-                float radius = rings[ring] * (1 + .022f * Mathf.Sin(angle * 3));
-                int vertex = 1 + ring * segments + step;
-                vertices[vertex] = new Vector3(Mathf.Cos(angle) * ParkDuneTerrain.OasisRadii.x * radius, 0,
-                    Mathf.Sin(angle) * ParkDuneTerrain.OasisRadii.y * radius);
-                normals[vertex] = Vector3.up;
+                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * ParkDuneTerrain.OasisBankRadius;
+                var point = Vector2.Scale(direction, ParkDuneTerrain.OasisRadii);
+                vertices[step + 1] = new Vector3(point.x, 0, point.y);
+                uv[step + 1] = direction;
+                triangles[step * 3 + 1] = 1 + (step + 1) % segments;
+                triangles[step * 3 + 2] = 1 + step;
             }
-            mesh.vertices = vertices;
-            mesh.normals = normals;
-            mesh.subMeshCount = rings.Length;
-            for (int ring = 0; ring < rings.Length; ring++)
-            {
-                var indices = new List<int>(segments * 6);
-                for (int step = 0; step < segments; step++)
-                {
-                    int outer = 1 + ring * segments + step;
-                    int outerNext = 1 + ring * segments + (step + 1) % segments;
-                    if (ring == 0) indices.AddRange(new[] { 0, outerNext, outer });
-                    else
-                    {
-                        int inner = outer - segments;
-                        int innerNext = outerNext - segments;
-                        indices.AddRange(new[] { inner, innerNext, outer, outer, innerNext, outerNext });
-                    }
-                }
-                mesh.SetTriangles(indices, ring);
-            }
-            return mesh;
+            return new Mesh { name = "Oasis water and shallows", vertices = vertices, uv = uv, triangles = triangles };
         }
     }
 }

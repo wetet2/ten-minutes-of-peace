@@ -8,6 +8,12 @@ namespace PeacePark
     {
         static readonly Color Ink = new Color32(22, 57, 25, 255);
         static readonly string[] AnimalNames = { "Bear", "Tiger", "Frog", "Giraffe", "Elephant" };
+        // Match the reading order of the illustrated atlas.
+        static readonly string[] CoverNames = { "공원", "숲", "놀이터", "사막", "시계탑 광장", "놀이공원" };
+        static readonly Color32[] CoverColors = {
+            new Color32(244, 248, 224, 255), new Color32(226, 242, 218, 255), new Color32(229, 245, 246, 255),
+            new Color32(255, 239, 211, 255), new Color32(239, 235, 255, 255), new Color32(254, 233, 243, 255)
+        };
         // Center, baseline, maximum width and height, relative to the illustrated stage.
         static readonly Vector4[] LandscapeAnimals = {
             new Vector4(.164f, .707f, .222f, .469f),
@@ -24,15 +30,19 @@ namespace PeacePark
             new Vector4(.81f, .508f, .36f, .225f)
         };
 
-        RectTransform canvasRect, content;
-        RawImage meadow;
+        RectTransform canvasRect, content, venueChoices;
+        RawImage meadow, venueBackdrop;
         Text wordmark;
         Text tagline;
         readonly RawImage[] animals = new RawImage[AnimalNames.Length];
         readonly RawImage[] groundShadows = new RawImage[AnimalNames.Length];
         ModeButton host, coloring;
-        Sprite buttonSurface;
-        Texture2D buttonTexture, shadowTexture;
+        Button venueBack;
+        Text venueHeading, venueBackLabel;
+        RectTransform backArrow;
+        VenueTile[] venueTiles;
+        Sprite buttonSurface, venueSurface;
+        Texture2D buttonTexture, shadowTexture, venueTexture, backdropTexture;
         Rect previousArea;
         Vector2Int previousScreen;
 
@@ -43,6 +53,10 @@ namespace PeacePark
             gameObject.AddComponent<GraphicRaycaster>();
             canvasRect = (RectTransform)transform;
             meadow = Art("Park Illustration", canvasRect, "Meadow");
+            venueBackdrop = Child("Place Picker Backdrop", canvasRect).gameObject.AddComponent<RawImage>();
+            venueBackdrop.texture = backdropTexture = CreateVenueBackdrop();
+            venueBackdrop.raycastTarget = false;
+            venueBackdrop.gameObject.SetActive(false);
             content = Child("Safe Area", canvasRect);
             wordmark = Label("App Title", content, ParkLanguage.Title, ParkFonts.Bold);
             wordmark.resizeTextForBestFit = true;
@@ -67,6 +81,7 @@ namespace PeacePark
                 new Color32(255, 188, 110, 255));
             host.Button.onClick.AddListener(() => park.ChooseHostMode());
             coloring.Button.onClick.AddListener(park.ChooseDrawingMode);
+            BuildVenueChoices(park);
             if (!EventSystem.current)
             {
                 var events = new GameObject("Start Screen Input", typeof(EventSystem), typeof(StandaloneInputModule));
@@ -79,6 +94,70 @@ namespace PeacePark
         {
             gameObject.SetActive(visible);
             if (visible) RefreshLayout();
+            else ShowVenueChoices(false);
+        }
+
+        internal bool IsChoosingVenue => venueChoices.gameObject.activeSelf;
+
+        internal void ShowVenueChoices(bool visible)
+        {
+            if (IsChoosingVenue == visible) return;
+            venueChoices.gameObject.SetActive(visible);
+            venueBackdrop.gameObject.SetActive(visible);
+            wordmark.gameObject.SetActive(!visible);
+            tagline.gameObject.SetActive(!visible);
+            foreach (var animal in animals) animal.gameObject.SetActive(!visible);
+            foreach (var shadow in groundShadows) shadow.gameObject.SetActive(!visible);
+            host.Button.gameObject.SetActive(!visible);
+            coloring.Button.gameObject.SetActive(!visible);
+            if (EventSystem.current)
+            {
+                var selected = visible ? venueTiles[0].Button : host.Button;
+                EventSystem.current.SetSelectedGameObject(isActiveAndEnabled ? selected.gameObject : null);
+            }
+        }
+
+        void BuildVenueChoices(ParkPlayground park)
+        {
+            venueSurface = ParkDialogs.CreateRoundedSurface(out venueTexture);
+            venueChoices = Child("Start Venue Tiles", content);
+            venueHeading = Label("Venue Heading", venueChoices, "놀이 장소 고르기", ParkFonts.Bold);
+            venueBack = TileButton("뒤로", venueChoices, venueSurface, new Color32(250, 252, 236, 255));
+            venueBack.onClick.AddListener(() => ShowVenueChoices(false));
+            var back = (RectTransform)venueBack.transform;
+            venueBackLabel = Label("Label", back, "뒤로", ParkFonts.Bold);
+            backArrow = Chevron(back, true);
+            var covers = Resources.Load<Texture2D>("Welcome/VenueCovers");
+            venueTiles = new VenueTile[park.Venues?.Length ?? 0];
+            for (int i = 0; i < venueTiles.Length; i++)
+            {
+                int choice = i;
+                var venue = park.Venues[i];
+                var tile = new VenueTile(venueChoices, venue, covers, venueSurface);
+                tile.Button.onClick.AddListener(() => park.ChooseStartingVenue(choice));
+                venueTiles[i] = tile;
+            }
+            venueChoices.gameObject.SetActive(false);
+        }
+
+        internal static Button TileButton(string name, RectTransform parent, Sprite sprite, Color color)
+        {
+            var root = Child(name, parent);
+            var surface = root.gameObject.AddComponent<Image>();
+            surface.sprite = sprite;
+            surface.type = Image.Type.Sliced;
+            surface.color = color;
+            var shadow = root.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color32(44, 63, 32, 54);
+            shadow.effectDistance = new Vector2(0, -4);
+            var button = root.gameObject.AddComponent<Button>();
+            button.targetGraphic = surface;
+            var colors = button.colors;
+            colors.highlightedColor = new Color32(207, 230, 180, 255);
+            colors.selectedColor = new Color32(228, 240, 206, 255);
+            colors.pressedColor = new Color32(181, 213, 157, 255);
+            button.colors = colors;
+            return button;
         }
 
         internal void SetModalOpen(bool open)
@@ -101,6 +180,7 @@ namespace PeacePark
             float coverWidth = Mathf.Max(screen.x, screen.y * ratio);
             float coverHeight = coverWidth / ratio;
             Place(meadow.rectTransform, new Rect((screen.x - coverWidth) / 2, (screen.y - coverHeight) / 2, coverWidth, coverHeight));
+            Place(venueBackdrop.rectTransform, new Rect(0, 0, screen.x, screen.y));
             Place(content, new Rect(area.xMin, screen.y - area.yMax, area.width, area.height));
             float height = area.height;
             float width = Mathf.Min(area.width, height * 2f);
@@ -138,6 +218,181 @@ namespace PeacePark
             host.Layout(new Rect(buttonLeft, buttonTop, buttonWidth, buttonHeight));
             coloring.Layout(new Rect(portrait ? buttonLeft : buttonLeft + buttonWidth + gap,
                 portrait ? buttonTop + buttonHeight + gap : buttonTop, buttonWidth, buttonHeight));
+            LayoutVenueChoices(left, width, height, portrait);
+        }
+
+        void LayoutVenueChoices(float left, float width, float height, bool portrait)
+        {
+            if (venueTiles.Length == 0) return;
+            int columns = Mathf.Min(venueTiles.Length, 3);
+            int rows = (venueTiles.Length + columns - 1) / columns;
+            float gridWidth = Mathf.Min(width * .93f, height * 1.33f);
+            float center = left + width * .5f;
+            float gridLeft = center - gridWidth * .5f;
+            float gap = Mathf.Min(width * .030f, height * .027f);
+            float headingHeight = Mathf.Min(height * .096f, gridWidth * .142f);
+            float headingGap = Mathf.Min(width * .040f, height * .036f);
+            float backWidth = Mathf.Min(gridWidth * .18f, headingHeight * 1.68f);
+            float rowGaps = gap * (rows - 1);
+            float cellWidth = (gridWidth - gap * (columns - 1)) / columns;
+            float cellHeight = Mathf.Min(cellWidth * (portrait ? 1.08f : .99f),
+                (height * .89f - headingHeight - headingGap - rowGaps) / rows);
+            float groupHeight = headingHeight + headingGap + rowGaps + cellHeight * rows;
+            float headingTop = (height - groupHeight) * .5f;
+            float gridTop = headingTop + headingHeight + headingGap;
+            FitLabel(venueHeading, new Rect(gridLeft + backWidth, headingTop, gridWidth - 2 * backWidth, headingHeight),
+                headingHeight * .72f);
+            float backHeight = headingHeight * .72f;
+            LayoutTileButton(venueBack, new Rect(gridLeft, headingTop + (headingHeight - backHeight) * .5f, backWidth, backHeight));
+            venueBack.image.pixelsPerUnitMultiplier = 64f / backHeight;
+            FitLabel(venueBackLabel, new Rect(backWidth * .25f, 0, backWidth * .65f, backHeight), backHeight * .40f);
+            float backIcon = Mathf.Min(backWidth * .17f, backHeight * .32f);
+            Place(backArrow, new Rect(backWidth * .13f, (backHeight - backIcon) * .5f, backIcon, backIcon));
+            LayoutVenueTiles(venueTiles, columns, new Vector2(center, gridTop), new Vector2(cellWidth, cellHeight), gap);
+        }
+
+        internal static void LayoutVenueTiles(VenueTile[] tiles, int columns, Vector2 start, Vector2 cell, float gap)
+        {
+            for (int i = 0; i < tiles.Length; i++)
+            {
+                int row = i / columns;
+                int rowCount = Mathf.Min(columns, tiles.Length - row * columns);
+                float rowLeft = start.x - (rowCount * cell.x + (rowCount - 1) * gap) * .5f;
+                tiles[i].Layout(new Rect(rowLeft + i % columns * (cell.x + gap),
+                    start.y + row * (cell.y + gap), cell.x, cell.y));
+            }
+        }
+
+        internal static void LayoutTileButton(Button button, Rect bounds)
+        {
+            Place((RectTransform)button.transform, bounds);
+            button.image.pixelsPerUnitMultiplier = 128f / bounds.height;
+        }
+
+        internal static void FitLabel(Text label, Rect bounds, float size)
+        {
+            Place(label.rectTransform, bounds);
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 8;
+            label.resizeTextMaxSize = label.fontSize = Mathf.Max(8, Pixels(size));
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+        }
+
+        static RectTransform Chevron(RectTransform parent, bool left = false)
+        {
+            var icon = Child("Direction", parent);
+            for (int arm = 0; arm < 2; arm++)
+            {
+                float y = arm == 0 ? .32f : .68f;
+                IconStroke(icon, new Vector2(.49f, y), .58f, (arm == 0 ? 43 : -43) * (left ? -1 : 1));
+            }
+            return icon;
+        }
+
+        static void IconStroke(RectTransform icon, Vector2 center, float width, float angle)
+        {
+            var line = Child("Stroke", icon).gameObject.AddComponent<Image>();
+            line.color = new Color32(76, 105, 62, 255);
+            line.raycastTarget = false;
+            var rect = line.rectTransform;
+            rect.pivot = new Vector2(.5f, .5f);
+            var half = new Vector2(width * .5f, .065f);
+            rect.anchorMin = center - half;
+            rect.anchorMax = center + half;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            rect.localRotation = Quaternion.Euler(0, 0, angle);
+        }
+
+        internal sealed class VenueTile
+        {
+            static readonly Color Paper = new Color32(255, 253, 241, 255);
+            public readonly Button Button;
+            readonly RawImage preview;
+            readonly Text title;
+            readonly Image frame, caption, currentMark;
+            readonly RectTransform arrow;
+            readonly Rect source = new Rect(0, 0, 1, 1);
+            readonly float focusY = .5f;
+
+            public VenueTile(RectTransform parent, ParkVenue venue, Texture2D covers, Sprite surface, bool marksCurrent = false)
+            {
+                Button = TileButton(venue.Name, parent, surface, Paper);
+                var root = (RectTransform)Button.transform;
+                frame = Child("Artwork Frame", root).gameObject.AddComponent<Image>();
+                frame.sprite = surface;
+                frame.type = Image.Type.Sliced;
+                frame.raycastTarget = false;
+                frame.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+                preview = Child("Venue Preview", frame.rectTransform).gameObject.AddComponent<RawImage>();
+                int cover = System.Array.IndexOf(CoverNames, venue.Name);
+                if (covers && cover >= 0)
+                {
+                    float insetX = 2f / covers.width, insetY = 2f / covers.height;
+                    source = new Rect(cover % 3 / 3f + insetX, (1 - cover / 3) * .5f + insetY,
+                        1f / 3 - 2 * insetX, .5f - 2 * insetY);
+                    focusY = cover == 5 ? .44f : cover == 4 ? .53f : .50f;
+                    preview.texture = covers;
+                }
+                else preview.texture = venue.Preview;
+                preview.raycastTarget = false;
+                caption = Child("Caption Paper", frame.rectTransform).gameObject.AddComponent<Image>();
+                caption.color = cover >= 0 ? CoverColors[cover] : new Color32(244, 248, 224, 255);
+                caption.raycastTarget = false;
+                title = Label("Label", frame.rectTransform, venue.Name, ParkFonts.Bold, TextAnchor.MiddleLeft);
+                arrow = Chevron(frame.rectTransform);
+                if (!marksCurrent) return;
+                currentMark = Child("Current Place", frame.rectTransform).gameObject.AddComponent<Image>();
+                currentMark.sprite = surface;
+                currentMark.type = Image.Type.Sliced;
+                currentMark.color = new Color32(242, 253, 223, 255);
+                currentMark.raycastTarget = false;
+                IconStroke(currentMark.rectTransform, new Vector2(.382f, .46f), .28f, -40);
+                IconStroke(currentMark.rectTransform, new Vector2(.578f, .515f), .48f, 47);
+                currentMark.gameObject.SetActive(false);
+            }
+
+            internal void SetCurrent(bool current)
+            {
+                Button.image.color = current ? new Color32(151, 194, 107, 255) : Paper;
+                if (currentMark) currentMark.gameObject.SetActive(current);
+            }
+
+            public void Layout(Rect bounds)
+            {
+                LayoutTileButton(Button, bounds);
+                float border = Mathf.Max(2, bounds.height * .014f);
+                float w = bounds.width - 2 * border, h = bounds.height - 2 * border;
+                Place(frame.rectTransform, new Rect(border, border, w, h));
+                frame.pixelsPerUnitMultiplier = 128f / bounds.height;
+                float footer = h * .205f;
+                var photo = new Rect(0, 0, w, h - footer);
+                Place(preview.rectTransform, photo);
+                if (preview.texture)
+                {
+                    float sourceRatio = source.width * preview.texture.width / (source.height * preview.texture.height);
+                    float frameRatio = photo.width / photo.height;
+                    float cropWidth = Mathf.Min(1, frameRatio / sourceRatio);
+                    float cropHeight = Mathf.Min(1, sourceRatio / frameRatio);
+                    preview.uvRect = new Rect(source.x + source.width * (1 - cropWidth) * .5f,
+                        source.y + source.height * (1 - cropHeight) * focusY,
+                        source.width * cropWidth, source.height * cropHeight);
+                }
+                Place(caption.rectTransform, new Rect(0, photo.height, w, footer));
+                if (currentMark)
+                {
+                    float markerSize = Mathf.Clamp(h * .19f, 19, 39);
+                    float inset = Mathf.Max(5, h * .047f);
+                    Place(currentMark.rectTransform, new Rect(w - markerSize - inset, inset, markerSize, markerSize));
+                    currentMark.pixelsPerUnitMultiplier = 64f / markerSize;
+                }
+                bool hasArrow = w >= 125;
+                arrow.gameObject.SetActive(hasArrow);
+                float margin = Mathf.Min(w * .085f, footer * .57f);
+                float icon = footer * .30f;
+                Place(arrow, new Rect(w - margin - icon, photo.height + (footer - icon) * .5f, icon, icon));
+                FitLabel(title, new Rect(margin, photo.height, w - 2 * margin - (hasArrow ? icon * 1.75f : 0), footer),
+                    Mathf.Min(footer * .52f, w * .090f));
+            }
         }
 
         sealed class ModeButton
@@ -276,11 +531,29 @@ namespace PeacePark
             return texture;
         }
 
+        static Texture2D CreateVenueBackdrop()
+        {
+            const int height = 96;
+            var texture = new Texture2D(1, height, TextureFormat.RGBA32, false) {
+                name = "Place picker paper", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
+            };
+            Color grass = new Color32(222, 237, 207, 236);
+            Color cream = new Color32(255, 250, 231, 248);
+            var pixels = new Color32[height];
+            for (int y = 0; y < height; y++) pixels[y] = Color.Lerp(grass, cream, y / (float)(height - 1));
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            return texture;
+        }
+
         void OnDestroy()
         {
             Destroy(buttonSurface);
             Destroy(buttonTexture);
             Destroy(shadowTexture);
+            Destroy(venueSurface);
+            Destroy(venueTexture);
+            Destroy(backdropTexture);
         }
     }
 }

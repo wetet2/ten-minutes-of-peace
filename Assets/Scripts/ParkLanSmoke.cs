@@ -5,6 +5,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace PeacePark
 {
@@ -48,7 +49,7 @@ namespace PeacePark
         IEnumerator Start()
         {
             var park = FindAnyObjectByType<ParkPlayground>();
-            yield return WaitFor(() => park && park.Lan != null);
+            yield return WaitFor(() => park && park.IsReady && park.Lan != null);
             if (host) yield return RunHost(park);
             else yield return RunClient(park);
             Application.Quit(0);
@@ -57,8 +58,35 @@ namespace PeacePark
         static IEnumerator RunHost(ParkPlayground park)
         {
             Require(park.IsSelectingMode&&!park.Lan.IsHosting&&!park.IsDrawing, "The first screen is not the mode selector.");
-            Require(park.ChooseHostMode()&&park.IsViewingPark&&park.Lan.IsHosting, "Host choice did not open the park.");
             var camera=park.OrbitCamera.GetComponent<Camera>();
+            var start=GameObject.Find("Start Screen").transform;
+            var open=start.Find("Safe Area/놀이 공간 열기").GetComponent<Button>();
+            var tiles=start.Find("Safe Area/Start Venue Tiles");
+            int initialVenue=park.VenueIndex;
+            Require(!tiles.gameObject.activeSelf,"Start tiles were visible before choosing host mode.");
+            open.onClick.Invoke();
+            Require(tiles.gameObject.activeInHierarchy&&park.IsSelectingMode&&!park.Lan.IsHosting&&
+                park.VenueIndex==initialVenue&&camera.cullingMask==0,"Opening start tiles moved the park or started hosting.");
+            var corners=new Vector3[4];
+            var safe=Screen.safeArea;
+            foreach(var venue in park.Venues)
+            {
+                var tile=(RectTransform)tiles.Find(venue.Name);
+                Require(tile.Find("Artwork Frame/Venue Preview").GetComponent<RawImage>().texture,
+                    "Missing start tile preview for "+venue.Name);
+                tile.GetWorldCorners(corners);
+                Require(corners[0].x>=safe.xMin-1&&corners[0].y>=safe.yMin-1&&
+                    corners[2].x<=safe.xMax+1&&corners[2].y<=safe.yMax+1,
+                    "Start tile extends outside the safe area: "+venue.Name);
+            }
+            tiles.Find("뒤로").GetComponent<Button>().onClick.Invoke();
+            Require(!tiles.gameObject.activeSelf&&open.gameObject.activeInHierarchy&&!park.Lan.IsHosting,
+                "Back did not restore the start controls.");
+            open.onClick.Invoke();
+            tiles.Find("놀이공원").GetComponent<Button>().onClick.Invoke();
+            Require(park.IsViewingPark&&park.Lan.IsHosting&&park.ThemeName=="놀이공원"&&!tiles.gameObject.activeSelf,
+                "Selecting a start tile did not enter the chosen venue as host.");
+            Debug.Log("START VENUE TILES PASS: previews remain on the start screen, back restores the buttons, and only choosing a tile opens the selected park.");
             Require(camera.cullingMask!=0&&park.OrbitCamera.InputEnabled, "The host park is not rendered or controllable.");
             park.OpenSettings();
             string address=park.Lan.LocalIPv4();
@@ -158,17 +186,30 @@ namespace PeacePark
                     var front=park.Drawing.Front.Paint.GetRawTextureData();
                     var back=park.Drawing.Back.Paint.GetRawTextureData();
                     var id=Guid.NewGuid();
-                    pending.Add(ParkLan.Send(IPAddress.Loopback,id,front,back,CancellationToken.None,kind));
-                    if(i==end-1)pending.Add(ParkLan.Send(IPAddress.Loopback,id,front,back,CancellationToken.None,kind));
+                    pending.Add(SendSample(kind,id,front,back));
+                    if(i==end-1)pending.Add(SendSample(kind,id,front,back));
                 }
                 yield return WaitFor(() => pending.All(task => task.IsCompleted));
-                Require(pending.All(task => task.Result == ParkLan.Accepted), "One or more concurrent requests were not acknowledged.");
+                var responses=pending.Select(task=>task.Result).ToArray();
+                Require(responses.All(result=>result==ParkLan.Accepted),
+                    "Concurrent drawing responses: "+string.Join(", ",responses));
             }
             park.ReturnToModeSelection();
             Require(park.IsSelectingMode&&!park.Lan.IsJoined&&!park.IsDrawing&&camera.cullingMask==0,
                 "Disconnect did not return to mode selection.");
             Debug.Log("MODE SELECTION PASS: startup selector, connection popup, close, remote drawing and disconnect.");
             Debug.Log($"LAN CLIENT PASS: joined localhost, sent all {AnimalKinds.Count} species and received acknowledgements, including repeated request IDs.");
+        }
+
+        static async Task<byte> SendSample(AnimalKind kind,Guid id,byte[] front,byte[] back)
+        {
+            // The live venue may briefly fill its eight-entry queue while an animal leaves the door.
+            for(int retries=0;;retries++)
+            {
+                byte result=await ParkLan.Send(IPAddress.Loopback,id,front,back,CancellationToken.None,kind).ConfigureAwait(false);
+                if(result!=ParkLan.Busy||retries>=24)return result;
+                await Task.Delay(350).ConfigureAwait(false);
+            }
         }
 
         static byte RedFor(AnimalKind kind)=>(byte)(((int)kind+1)*21);

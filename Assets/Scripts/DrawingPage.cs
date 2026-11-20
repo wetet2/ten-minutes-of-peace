@@ -40,6 +40,7 @@ namespace PeacePark
         bool tabPressed,tabDragging;
         readonly DrawingSkin skin=new DrawingSkin();
         int colorIndex=4,brushIndex=2;
+        float BrushRadius=>radii[brushIndex]*2;
         bool painting;
         Vector2 last;
         float lockedUntil;
@@ -144,6 +145,7 @@ namespace PeacePark
             GUI.Label(new Rect(left,195,half,50),ParkLanguage.Text("앞모습"),title);GUI.Label(new Rect(left+half,195,half,50),ParkLanguage.Text("뒷모습"),title);
             var frontRect=Fit(new Rect(left+8,245,half-16,580));var backRect=Fit(new Rect(left+half+8,245,half-16,580));
             Canvas(frontRect,Front);Canvas(backRect,Back);
+            DrawBrushPreview(frontRect,backRect);
             var apply=new Rect(brushPanel.x,brushPanel.yMax+12,brushPanel.width,96);
             skin.Draw(apply,RemainingLock>0||Sending?new Color32(197,211,179,255):new Color32(116,211,33,255),38,true);
             var old=button.normal.textColor;button.normal.textColor=Color.white;button.fontSize=Sending?24:36;
@@ -151,6 +153,16 @@ namespace PeacePark
             GUI.enabled=RemainingLock<=0&&!Sending;if(GUI.Button(apply,GUIContent.none,GUIStyle.none))ApplyDrawing();GUI.enabled=true;
             Toast?.DrawOverColoring();
             HandlePaint(Event.current,frontRect,backRect);
+        }
+        void DrawBrushPreview(Rect front,Rect back)
+        {
+            if(Event.current.type!=EventType.Repaint||Application.isMobilePlatform||!Application.isFocused||!Input.mousePresent||Sending)return;
+            var pointer=Event.current.mousePosition;
+            var canvas=front.Contains(pointer)?front:back;
+            if(!canvas.Contains(pointer))return;
+            float radius=BrushRadius*canvas.width/AnimalCanvas.Width;
+            var bounds=new Rect(pointer.x-radius,pointer.y-radius,2*radius,2*radius);
+            GUI.DrawTexture(bounds,Texture2D.whiteTexture,ScaleMode.StretchToFill,true,0,new Color32(92,64,49,220),1.5f,radius);
         }
         void DrawPalette(Rect area)
         {
@@ -297,7 +309,7 @@ namespace PeacePark
             float enter=0,exit=1;
             if(!ClipAxis(from.x,delta.x,rect.xMin,rect.xMax,ref enter,ref exit)||
                 !ClipAxis(from.y,delta.y,rect.yMin,rect.yMax,ref enter,ref exit))return;
-            canvas.Stroke(Point(rect,from+delta*enter),Point(rect,from+delta*exit),radii[brushIndex]*2,colors[colorIndex]);
+            canvas.Stroke(Point(rect,from+delta*enter),Point(rect,from+delta*exit),BrushRadius,colors[colorIndex]);
         }
         static bool ClipAxis(float origin,float delta,float min,float max,ref float enter,ref float exit)
         {

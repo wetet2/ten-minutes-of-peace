@@ -97,6 +97,13 @@ namespace PeacePark
             frontTexture=WhiteTexture();backTexture=WhiteTexture();
             paintMaterial.SetTexture("_FrontTex",frontTexture);paintMaterial.SetTexture("_BackTex",backTexture);
             materials=new[]{paintMaterial,Solid("Warm dark eyes and smile",new Color32(54,40,38,255),.38f),Solid("Soft pink",new Color32(247,161,181,255)),Solid("Warm white muzzle",new Color32(255,248,237,255))};
+            if(Kind is AnimalKind.Tiger or AnimalKind.Crocodile)
+            {
+                System.Array.Resize(ref materials,5);
+                materials[4]=Kind==AnimalKind.Tiger
+                    ?Solid("Tiger amber iris",new Color32(250,174,55,255),.36f)
+                    :Solid("Crocodile golden iris",new Color32(229,192,68,255),.34f);
+            }
             model=Pivot("Rabbit rig",transform,Vector3.zero);
             body=Pivot("Body",model,BodyRest);head=Pivot("Head and neck",model,new Vector3(0,2.32f,0));
             // Clavicles pivot near the chest. Their outer ends carry the upper-arm joints,
@@ -166,6 +173,21 @@ namespace PeacePark
         void PlaceFeet(float floor)
         {if(Grounded)model.localPosition-=Vector3.up*floor;}
         public void PlayIdlePose(){IdlePose();PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);}
+        internal void PlayRideQueuePose(float waited,int id)
+        {
+            PlayIdlePose();
+            float cycle=Mathf.Repeat(waited+(id%7)*.39f,8.3f);
+            float left=Glance(cycle,1.1f,1.4f);
+            float right=Glance(cycle,4.35f,1.6f);
+            float turn=left-right;
+            head.localRotation=Quaternion.Euler(-3*(left+right),27*turn,-4*turn);
+
+            static float Glance(float time,float start,float length)
+            {
+                float progress=Mathf.Clamp01((time-start)/length);
+                return Mathf.SmoothStep(0,1,Mathf.Min(progress,1-progress)/.32f);
+            }
+        }
         public void PlayWalkingPose(float phase)=>PlayWalkingPose(phase,1);
         internal void PlayWalkingPose(float phase,float strength)
         {
@@ -208,20 +230,6 @@ namespace PeacePark
             rightArm.localRotation=Quaternion.Euler(0,0,-40-24*airborne);
         }
 
-        internal void PlayPeekPose(float headYaw)
-        {
-            PlayIdlePose();
-            ApplyBushLean(1);
-            head.localRotation=Quaternion.Euler(-6,headYaw,headYaw*.06f);
-        }
-
-        internal void ApplyBushLean(float amount)
-        {
-            model.localPosition-=Vector3.up*(.34f*amount);
-            head.localPosition+=new Vector3(0,.12f,-.62f)*amount;
-            body.localRotation=Quaternion.Euler(-12*amount,0,0);
-        }
-
         internal void PlayDancePose(float progress)
         {
             PlayIdlePose();
@@ -245,6 +253,75 @@ namespace PeacePark
             leftArm.localRotation=Quaternion.Euler(15*seated,0,40-10*seated);
             rightArm.localRotation=Quaternion.Euler(15*seated,0,-40+10*seated);
         }
+        internal void PlayRideStepPose(float progress, bool rightFoot)
+        {
+            PlayIdlePose();
+            float step = Mathf.Sin(progress * Mathf.PI);
+            var lead = rightFoot ? rightLeg : leftLeg;
+            lead.localPosition += Vector3.up * (.07f * step);
+            lead.localRotation = Quaternion.Euler(28 * step, 0, 0);
+            body.localRotation = Quaternion.Euler(-10 * step, 0, 0);
+            head.localRotation = Quaternion.Euler(6 * step, 0, 0);
+            leftArm.localRotation = Quaternion.Euler(30 * step, 0, 40);
+            rightArm.localRotation = Quaternion.Euler(34 * step, 0, -40);
+        }
+
+        internal void PlayRideSeatPose(float seated)
+        {
+            PlayIdlePose();
+            model.localPosition -= Vector3.up * (.58f * seated);
+            body.localRotation = Quaternion.Euler(-5 * seated, 0, 0);
+            head.localRotation = Quaternion.Euler(4 * seated, 0, 0);
+            leftLeg.localRotation = rightLeg.localRotation = Quaternion.Euler(60 * seated, 0, 0);
+            leftArm.localRotation = Quaternion.Euler(30 * seated, -12 * seated, 40 - 16 * seated);
+            rightArm.localRotation = Quaternion.Euler(30 * seated, 12 * seated, -40 + 16 * seated);
+        }
+        internal Vector3 PlayCarouselSeatPose(float seated)
+        {
+            PlayIdlePose();
+            body.localRotation=Quaternion.Euler(-4*seated,0,0);
+            head.localRotation=Quaternion.Euler(3*seated,0,0);
+            leftLeg.localRotation=Quaternion.Euler(32*seated,0,-22*seated);
+            rightLeg.localRotation=Quaternion.Euler(32*seated,0,22*seated);
+            leftArm.localRotation=Quaternion.Euler(63*seated,20*seated,40-24*seated);
+            rightArm.localRotation=Quaternion.Euler(63*seated,-20*seated,-40+24*seated);
+            return (leftLeg.position+rightLeg.position)*.5f-transform.position;
+        }
+        internal void GripCarouselHandle(Vector3 handle,float grip)
+        {
+            AimHand(leftArm,-1,handle-transform.right*.14f,grip);
+            AimHand(rightArm,1,handle+transform.right*.14f,grip);
+        }
+        internal void PlayRoundaboutPose(Vector3 handle,float grip,float sway)
+        {
+            PlayIdlePose();
+            body.localRotation=Quaternion.Euler(6*grip,0,4*sway);
+            head.localRotation=Quaternion.Euler(2*grip,8*sway,-4*sway);
+            leftLeg.localRotation=Quaternion.Euler(0,0,-5*grip);
+            rightLeg.localRotation=Quaternion.Euler(0,0,5*grip);
+            AimHand(leftArm,-1,handle-transform.right*.18f,grip);
+            AimHand(rightArm,1,handle+transform.right*.18f,grip);
+        }
+        internal float ZiplineGripHeight => (RabbitMesh.ShoulderHeight+.74f)*transform.lossyScale.y;
+
+        internal Vector3 GripSandSledRope(float grip)
+        {
+            var reach = transform.TransformDirection(new Vector3(-.30f, -.31f, .78f).normalized);
+            var hand = leftArm.position + reach * (.83f * transform.lossyScale.x);
+            AimHand(leftArm, -1, hand, grip);
+            return hand;
+        }
+
+        internal void PlayZiplinePose(Vector3 handle,float grip,float swing)
+        {
+            PlayIdlePose();
+            leftLeg.localRotation=Quaternion.Euler(26*grip+7*swing,0,-9*grip);
+            rightLeg.localRotation=Quaternion.Euler(36*grip+7*swing,0,9*grip);
+            head.localRotation=Quaternion.Euler(-8*grip,0,3*swing);
+            float handSpacing=.47f*transform.lossyScale.x;
+            AimHand(leftArm,-1,handle-transform.right*handSpacing,grip);
+            AimHand(rightArm,1,handle+transform.right*handSpacing,grip);
+        }
         internal void PlayPolePose(Vector3 pole,float grip)
         {
             PlayIdlePose();
@@ -252,19 +329,24 @@ namespace PeacePark
             body.localRotation=Quaternion.Euler(6*grip,0,0);
             leftLeg.localRotation=Quaternion.Euler(28*grip,-10*grip,-7*grip);
             rightLeg.localRotation=Quaternion.Euler(39*grip,14*grip,8*grip);
-            AimHand(leftArm,-1,.14f);
-            AimHand(rightArm,1,.035f);
+            AimHandAtPole(leftArm,-1,pole,.14f,grip);
+            AimHandAtPole(rightArm,1,pole,.035f,grip);
             if(correctiveReady)skin.SetBlendShapeWeight(0,100*(1-grip));
+        }
 
-            void AimHand(Transform arm,int side,float rise)
-            {
-                var target=pole+transform.right*(side*.062f);
-                target.y=arm.position.y+rise;
-                var restDirection=new Vector3(side*.78f,-.32f,-.02f);
-                var direction=arm.parent.InverseTransformPoint(target)-arm.localPosition;
-                var reach=Quaternion.FromToRotation(restDirection,direction);
-                arm.localRotation=Quaternion.Slerp(arm.localRotation,reach,grip);
-            }
+        void AimHandAtPole(Transform arm,int side,Vector3 pole,float rise,float grip)
+        {
+            var target=pole+transform.right*(side*.062f);
+            target.y=arm.position.y+rise;
+            AimHand(arm,side,target,grip);
+        }
+
+        void AimHand(Transform arm,int side,Vector3 target,float grip)
+        {
+            var restDirection=new Vector3(side*.78f,-.32f,-.02f);
+            var direction=arm.parent.InverseTransformPoint(target)-arm.localPosition;
+            var reach=Quaternion.FromToRotation(restDirection,direction);
+            arm.localRotation=Quaternion.Slerp(arm.localRotation,reach,grip);
         }
         void Update(){if(running&&!ExternalMotion){sequenceTime+=Time.deltaTime;PreviewPose(sequenceTime);}}
         void IdlePose()

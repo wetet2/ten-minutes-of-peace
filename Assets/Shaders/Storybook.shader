@@ -3,6 +3,7 @@ Shader "PeacePark/Storybook"
     Properties
     {
         _Color("Paint color",Color)=(1,1,1,1)
+        _MainTex("Paint map",2D)="white" {}
         _Shade("Shade tint",Color)=(.62,.76,.69,1)
         _ShadowFloor("Shadow brightness",Range(0,1))=.7
         _ShadowFadeDistance("Distant shadow fade",Float)=0
@@ -22,18 +23,31 @@ Shader "PeacePark/Storybook"
             #pragma multi_compile_fwdbase
             #pragma multi_compile_fog
             #pragma multi_compile_local_fragment _ PEACE_PARK_ANIMAL_FADING
+            #pragma multi_compile_local _ PEACE_PARK_PAINT_MAP
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
             #include "AnimalFade.cginc"
             fixed4 _Color,_Shade;float _Variation,_GrassDetail,_ShadowFloor,_ShadowFadeDistance;
-            struct appdata {float4 vertex:POSITION;float3 normal:NORMAL;};
-            struct v2f {float4 pos:SV_POSITION;float3 normal:TEXCOORD0;float3 world:TEXCOORD1;SHADOW_COORDS(2) float viewDepth:TEXCOORD3;float4 screen:TEXCOORD4;};
+            #if defined(PEACE_PARK_PAINT_MAP)
+                sampler2D _MainTex;
+            #endif
+            struct appdata {float4 vertex:POSITION;float3 normal:NORMAL;float2 uv:TEXCOORD0;};
+            struct v2f {
+                float4 pos:SV_POSITION;float3 normal:TEXCOORD0;float3 world:TEXCOORD1;SHADOW_COORDS(2)
+                float viewDepth:TEXCOORD3;float4 screen:TEXCOORD4;
+                #if defined(PEACE_PARK_PAINT_MAP)
+                    float2 uv:TEXCOORD5;
+                #endif
+            };
             v2f vert(appdata v)
             {
                 v2f o;o.pos=UnityObjectToClipPos(v.vertex);o.normal=UnityObjectToWorldNormal(v.normal);
                 o.world=mul(unity_ObjectToWorld,v.vertex).xyz;
                 o.viewDepth=-UnityObjectToViewPos(v.vertex.xyz).z;
                 o.screen=ComputeScreenPos(o.pos);
+                #if defined(PEACE_PARK_PAINT_MAP)
+                    o.uv=v.uv;
+                #endif
                 TRANSFER_SHADOW(o);
                 return o;
             }
@@ -73,6 +87,9 @@ Shader "PeacePark/Storybook"
                     variation+=_GrassDetail*(broad+clumps*.75+flecks*.65);
                 }
                 fixed4 color=fixed4(_Color.rgb*lighting*(1+variation),1);
+                #if defined(PEACE_PARK_PAINT_MAP)
+                    color.rgb*=tex2D(_MainTex,i.uv).rgb;
+                #endif
                 // Interpolate distance, not the clamped vertex fog factor, on large ground triangles.
                 #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
                     UNITY_CALC_FOG_FACTOR_RAW(i.viewDepth);

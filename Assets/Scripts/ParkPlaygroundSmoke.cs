@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace PeacePark
 {
@@ -29,6 +31,7 @@ namespace PeacePark
             while(!park||!park.IsReady)
             {park=FindAnyObjectByType<ParkPlayground>();if(Time.realtimeSinceStartup>deadline)throw new Exception("Living park did not initialize");yield return null;}
             park.ManualSimulation=true;
+            yield return CheckStartVenueLayout(park);
             var orbit=park.OrbitCamera;
             var initialPosition=orbit.transform.position;
             var initialRotation=orbit.transform.rotation;
@@ -39,10 +42,19 @@ namespace PeacePark
             orbit.pitch=20;
             orbit.transform.SetPositionAndRotation(Vector3.zero,Quaternion.identity);
             orbit.ResetView();
+            Require(orbit.transform.position.sqrMagnitude<.000001f&&orbit.distance==15,
+                "Starting a camera reset jumped to the default view.");
+            orbit.AdvanceAnimalFollow(.45f);
+            Require(Vector3.Distance(orbit.transform.position,initialPosition)>.01f&&
+                orbit.transform.position.sqrMagnitude>.01f&&
+                Mathf.Approximately(orbit.distance,(15+initialZoom)*.5f),
+                "Reset did not move and zoom through an intermediate view.");
+            orbit.ResetView();
+            orbit.AdvanceAnimalFollow(.5f);
             Require(Vector3.Distance(orbit.transform.position,initialPosition)<.0001f&&
                 Quaternion.Angle(orbit.transform.rotation,initialRotation)<.01f&&orbit.distance==initialZoom,
                 "Camera reset did not restore the scene's initial position, angle and zoom.");
-            Debug.Log("CAMERA RESET PASS: restored the scene's initial position, angle and zoom.");
+            Debug.Log("CAMERA RESET PASS: eased from the displayed view to the venue's initial position, angle and zoom.");
             Require(Mathf.Approximately(ParkCamera.DistanceFromPinch(30,100,150),20)&&
                 Mathf.Approximately(ParkCamera.DistanceFromPinch(20,150,100),30)&&
                 ParkCamera.DistanceFromPinch(30,100,900)==3.5f&&ParkCamera.DistanceFromPinch(30,900,100)==48,
@@ -62,6 +74,7 @@ namespace PeacePark
             Require(Mathf.Abs(orbit.focus.x)==15&&Mathf.Abs(orbit.focus.z)==12&&Mathf.Approximately(orbit.distance,initialZoom),
                 "Combined pinch and pan did not respect the movement limits.");
             orbit.ResetView();
+            orbit.AdvanceAnimalFollow(1f);
             Debug.Log("TOUCH PAN PASS: two-finger drag, centered pinch, combined pan/zoom and bounds.");
             park.ChooseDrawingMode();
             Require(!park.Lan.BeginJoin("invalid")&&park.Toast.Message!=null,"An invalid IP did not show a toast.");
@@ -72,6 +85,8 @@ namespace PeacePark
             park.CloseDialog();
             Debug.Log("TOAST PASS: connection errors appear and clear automatically.");
             park.ShowPark();
+            CheckDistanceGuide(park);
+            CheckInGameVenuePicker(park);
             park.OpenSettings();
             var settings=GameObject.Find("Park Settings Popup");
             Require(park.IsSettingsOpen&&settings&&!orbit.InputEnabled,"Settings did not open over the park.");
@@ -164,11 +179,18 @@ namespace PeacePark
             Debug.Log("PORCH PASS: both old slabs replaced, 202 emergence samples follow the new landing height.");
             if(park.Venues?.Length>1)
             {
+                var names=Array.ConvertAll(park.Venues,venue=>venue.Name);
+                var supported=new[]{"공원","숲","놀이터","사막","시계탑 광장","놀이공원"};
+                Require(Array.TrueForAll(names,name=>Array.IndexOf(supported,name)>=0)&&
+                    Array.IndexOf(names,"시계탑 광장")>=0&&Array.IndexOf(names,"놀이공원")>=0,
+                    "The active place picker does not match the supported venues.");
+                Debug.Log("VENUES PASS: "+string.Join(", ",names));
                 int forestIndex=Array.FindIndex(park.Venues,venue=>venue.Name=="숲");
                 if(forestIndex>=0)
                 {
                     park.ChangeVenue(forestIndex);
                     yield return Capture("forest-lawn.png");
+                    yield return CheckForestRides(park);
                 }
                 int cafeIndex=Array.FindIndex(park.Venues,venue=>venue.Name=="놀이터");
                 Require(cafeIndex>=0,"The kids cafe is missing from the place picker.");
@@ -179,7 +201,10 @@ namespace PeacePark
                 {
                     park.ChangeVenue(desertIndex);
                     yield return CheckDesert(park);
+                    yield return CheckSandSled(park);
                 }
+                park.ChangeVenue(Array.IndexOf(names,"놀이공원"));
+                yield return CheckElephantTrain(park);
                 park.ChangeVenue(0);
             }
             park.ShowDrawing();yield return null;
@@ -220,7 +245,7 @@ namespace PeacePark
                 yield return Capture(house.name=="Flower cottage"?"porch-flower-1440p.png":"porch-candy-1440p.png");
             }
             Camera.main.transform.position=new Vector3(0,22,-25);Camera.main.transform.LookAt(new Vector3(0,1,0));
-            var contactProbe=new Mesh();float maxGap=0,maxFootError=0;
+            var contactProbe=new Mesh();float maxFootError=0;
             var walkingSkin=first.Character.Skin;
             var bindVertices=walkingSkin.sharedMesh.vertices;
             var feet=new[]{new System.Collections.Generic.List<int>(),new System.Collections.Generic.List<int>()};
@@ -250,7 +275,6 @@ namespace PeacePark
                 for(int i=0;i<=128;i++)
                 {
                     first.Character.PlayWalkingPose(i*Mathf.PI*2/128);walkingSkin.BakeMesh(contactProbe,false);contactProbe.RecalculateBounds();
-                    maxGap=Mathf.Max(maxGap,Mathf.Abs(contactProbe.bounds.min.y));
                     contactProbe.GetVertices(posedVertices);
                     for(int foot=0;foot<feet.Length;foot++)
                     {
@@ -273,9 +297,7 @@ namespace PeacePark
                     Require(backwardLimit[foot]-forwardLimit[foot]>.25f,"Foot does not swing with its leg");
             }
             finally{Destroy(contactProbe);}
-            Require(maxGap<.003f,"Walking feet do not contact floor: "+maxGap);
             Require(maxFootError<.0001f,"Feet deform during walking: "+maxFootError);
-            Debug.Log("FOOT CONTACT PASS: 129 walking poses, maximum ground error "+maxGap.ToString("F5")+" world units.");
             Debug.Log($"FOOT SHAPE PASS: {feet[0].Count+feet[1].Count} foot vertices retain their shape across 129 walking poses, maximum error {maxFootError:F6}.");
             park.ManualSimulation=false;
             // Warm up before reporting paced frame times; exclude submission/PNG work.
@@ -345,11 +367,145 @@ namespace PeacePark
                     "A queued animal was lost when switching to the bakery.");
                 Debug.Log("BAKERY ARRIVALS PASS: merged both park entrances, all three animals exited through one door and walked from lawn level.");
             }
+            CheckOpenEntranceDispatch(park);
             CheckAnimalLimit(park);
             CheckCrowdSeparation(park);
             CheckFastPlaygroundArrivals(park);
+            CheckFocusedSandSledReplay(park);
             if(!failed){Debug.Log("LIVING PARK PLAYER PASS: drawing Apply/cooldown, five independent friends, rendered paint shader, door emergence and bounded wandering.");Application.Quit(0);}
         }
+        IEnumerator CheckStartVenueLayout(ParkPlayground park)
+        {
+            if(park.Venues?.Length!=6)yield break;
+            Require(park.ChooseHostMode(),"The start-screen place picker did not open.");
+            var tiles=GameObject.Find("Start Venue Tiles").transform;
+            CheckIllustratedVenueGrid(park,tiles);
+            CaptureVenueGrid(tiles.GetComponentInParent<Canvas>(),"start-venue-picker.png");
+            tiles.Find("뒤로").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Debug.Log($"START VENUE GRID PASS: three columns in two rows at {Screen.width}x{Screen.height}.");
+            yield return null;
+        }
+
+        void CheckDistanceGuide(ParkPlayground park)
+        {
+            var camera=Camera.main;
+            int visibleLayers=camera.cullingMask;
+            park.OpenDistanceGuide();
+            var guide=park.GetComponentInChildren<ParkDistanceGuide>();
+            Require(guide&&park.IsDistanceGuideOpen&&camera.cullingMask==0&&!park.OrbitCamera.InputEnabled,
+                "The distance guide did not cover the playing area or block camera gestures.");
+            var cover=guide.transform.Find("Opaque screen cover").GetComponent<UnityEngine.UI.Image>();
+            var headline=guide.transform.Find("Reminder heading").GetComponent<UnityEngine.UI.Text>();
+            var illustration=guide.transform.Find("Bunny stepping back").GetComponent<UnityEngine.UI.RawImage>();
+            Require(((Color32)cover.color).Equals(new Color32(255,251,240,255))&&cover.raycastTarget&&
+                cover.rectTransform.anchorMin==Vector2.zero&&cover.rectTransform.anchorMax==Vector2.one&&
+                illustration.texture&&guide.transform.childCount==3,
+                "The distance guide must contain only its opaque ivory background, illustration and heading.");
+            Require(headline.text==ParkLanguage.Text(ParkDistanceGuide.Heading),"The reminder did not use the system language.");
+            foreach(bool korean in new[]{true,false})
+            {
+                guide.SetLanguage(korean);
+                var expected=korean?ParkDistanceGuide.Heading:"Can you take one step\nback from the screen?";
+                Require(headline.text==expected&&headline.font.name==(korean?"BaskinRobbins-Bold":"ComicRelief-Bold"),
+                    "The distance guide copy or font is missing for one locale.");
+                Canvas.ForceUpdateCanvases();
+                Require(headline.cachedTextGenerator.lineCount==2,"The distance guide heading did not fit on two lines.");
+                CaptureVenueGrid(guide.GetComponent<Canvas>(),korean?"distance-guide-ko.png":"distance-guide-en.png");
+            }
+            guide.SetLanguage(ParkLanguage.IsKorean);
+            Canvas.ForceUpdateCanvases();
+            var tap=new PointerEventData(EventSystem.current){position=Screen.safeArea.center,button=PointerEventData.InputButton.Left};
+            var hits=new List<RaycastResult>();
+            EventSystem.current.RaycastAll(tap,hits);
+            Require(hits.Count>0&&hits[0].gameObject==cover.gameObject,"Tapping over the illustration did not hit the screen cover.");
+            ExecuteEvents.Execute(hits[0].gameObject,tap,ExecuteEvents.pointerClickHandler);
+            Require(!guide.gameObject.activeSelf&&!park.IsDistanceGuideOpen&&park.OrbitCamera.InputEnabled&&
+                camera.cullingMask==visibleLayers,"Tapping the cover did not restore the game view and its camera.");
+            Debug.Log($"DISTANCE GUIDE PASS: flat ivory cover, Korean and English copy, and tap-to-resume at {Screen.width}x{Screen.height}.");
+        }
+
+        void CheckInGameVenuePicker(ParkPlayground park)
+        {
+            if(park.Venues?.Length!=6)return;
+            var dialogs=park.GetComponentInChildren<ParkDialogs>(true);
+            dialogs.Show(false,false,true);
+            var panel=dialogs.transform.Find("Venue Picker");
+            CheckIllustratedVenueGrid(park,panel);
+            for(int index=0;index<6;index++)
+            {
+                var marker=panel.Find(park.Venues[index].Name+"/Artwork Frame/Current Place");
+                Require(marker&&marker.gameObject.activeSelf==(index==park.VenueIndex),
+                    "The popup did not mark the current place.");
+            }
+            CaptureVenueGrid(panel.GetComponentInParent<Canvas>(),"in-game-venue-picker.png",Camera.main);
+            dialogs.transform.Find("Modal Backdrop").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Require(!panel.gameObject.activeInHierarchy&&park.IsViewingPark,"Tapping outside did not close the place popup.");
+            Debug.Log($"VENUE POPUP PASS: illustrated grid, current highlight and outside dismissal at {Screen.width}x{Screen.height}.");
+        }
+
+        static void CheckIllustratedVenueGrid(ParkPlayground park,Transform tiles)
+        {
+            RectTransform Tile(int index)=>(RectTransform)tiles.Find(park.Venues[index].Name);
+            Vector2 TilePosition(int index)=>Tile(index).anchoredPosition;
+            float top=TilePosition(0).y,bottom=TilePosition(3).y;
+            Require(top>bottom,"The place picker did not lay out two rows.");
+            for(int column=0;column<3;column++)
+            {
+                var upper=TilePosition(column);
+                var lower=TilePosition(column+3);
+                Require(Mathf.Approximately(upper.y,top)&&Mathf.Approximately(lower.y,bottom)&&
+                    Mathf.Approximately(upper.x,lower.x)&&(column==0||upper.x>TilePosition(column-1).x),
+                    "The place picker does not show three columns in each row.");
+            }
+            var covers=Resources.Load<Texture2D>("Welcome/VenueCovers");
+            for(int index=0;index<6;index++)
+            {
+                var artwork=Tile(index).Find("Artwork Frame/Venue Preview").GetComponent<UnityEngine.UI.RawImage>();
+                Require(covers&&artwork.texture==covers&&(int)(artwork.uvRect.center.x*3)==index%3&&
+                    (int)(artwork.uvRect.center.y*2)==1-index/3,"The venue card is missing its illustrated cover.");
+            }
+        }
+
+        void CaptureVenueGrid(Canvas canvas,string name,Camera camera=null)
+        {
+            int width=Screen.width,height=Screen.height;
+            bool ownsCamera=!camera;
+            if(ownsCamera)
+            {
+                camera=new GameObject("Place picker review camera").AddComponent<Camera>();
+                camera.enabled=false;
+                camera.transform.position=Vector3.up*2500;
+                camera.clearFlags=CameraClearFlags.SolidColor;
+                camera.backgroundColor=Color.white;
+                camera.farClipPlane=10;
+            }
+            var oldTarget=camera.targetTexture;
+            var target=new RenderTexture(width,height,24);
+            var pixels=new Texture2D(width,height,TextureFormat.RGB24,false);
+            var previous=RenderTexture.active;
+            try
+            {
+                camera.targetTexture=target;
+                canvas.worldCamera=camera;
+                canvas.renderMode=RenderMode.ScreenSpaceCamera;
+                canvas.planeDistance=2;
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active=target;
+                pixels.ReadPixels(new Rect(0,0,width,height),0,0);
+                File.WriteAllBytes(Path.Combine(output,name),pixels.EncodeToPNG());
+            }
+            finally
+            {
+                canvas.renderMode=RenderMode.ScreenSpaceOverlay;
+                canvas.worldCamera=null;
+                camera.targetTexture=oldTarget;
+                RenderTexture.active=previous;
+                target.Release();Destroy(target);Destroy(pixels);
+                if(ownsCamera)Destroy(camera.gameObject);
+            }
+        }
+
         static void CheckPandazolePlanters()
         {
             var garden=GameObject.Find("Peace Park");
@@ -386,14 +542,22 @@ namespace PeacePark
                 !park.IsSceneryClear(pond+Vector3.right*desert.PondRadii.x*.93f)&&
                 park.IsSceneryClear(pond+Vector3.back*(desert.PondRadii.y+1.2f)),
                 "The oasis is not recessed or its water does not have a clear walking boundary.");
+            var surface=water.GetComponent<MeshRenderer>().sharedMaterial;
+            var bed=oasis.Find("Oasis submerged stones");
+            Require(ParkDuneTerrain.OasisRadii.x>6&&ParkDuneTerrain.OasisRadii.y>4.3f&&surface.shader.isSupported&&
+                surface.renderQueue==(int)UnityEngine.Rendering.RenderQueue.Transparent&&
+                surface.GetColor("_Shallow").a<surface.GetColor("_Deep").a&&surface.GetColor("_Deep").a<.75f&&
+                bed&&bed.childCount>=6,"The enlarged oasis is missing its transparent shallows or submerged stones.");
+            foreach(var stone in bed.GetComponentsInChildren<MeshRenderer>())
+                Require(stone.bounds.max.y<water.position.y,"An oasis bed stone rose through the water.");
             yield return Capture("desert.png");
             var orbit=park.OrbitCamera;
             orbit.enabled=false;
-            Camera.main.transform.position=new Vector3(-4.8f,8.6f,-13.5f);
+            Camera.main.transform.position=new Vector3(-5.8f,9.7f,-16.2f);
             Camera.main.transform.LookAt(pond+Vector3.up*.75f);
             yield return Capture("desert-oasis.png");
             orbit.enabled=true;
-            Debug.Log("OASIS PASS: recessed water, five palms, shoreline rocks and reeds, and dry access around the pool.");
+            Debug.Log("OASIS PASS: enlarged basin, translucent shallows, submerged stones, and dry access around five palms.");
             var front=park.Drawing.Front.Paint.EncodeToPNG();
             var back=park.Drawing.Back.Paint.EncodeToPNG();
             for(int index=0;index<park.Houses.Length;index++)
@@ -414,7 +578,7 @@ namespace PeacePark
                 Require(hiddenByDune&&park.WalkArea.Contains(new Vector2(landing.x,landing.z))&&park.IsSceneryClear(landing),
                     "A dune entrance is exposed or its trailhead is obstructed.");
                 Require(house.TryReserve(),"The dune entrance did not reserve a slot.");
-                float crest=0;
+                float crest=0,firstWave=0;
                 bool photographed=false;
                 for(int step=0;step<Mathf.CeilToInt((house.ExitDuration+3)/.05f);step++)
                 {
@@ -423,19 +587,453 @@ namespace PeacePark
                     var position=sample.transform.position;
                     Require(Mathf.Abs(position.y-park.SurfaceHeight(position))<.015f,"The animal left the desert ground.");
                     crest=Mathf.Max(crest,position.y);
+                    if(firstWave==0&&agent.WaveCount>0)
+                    {
+                        firstWave=(step+1)*.05f;
+                        Require(Vector3.Distance(position,landing)<.02f,"The animal greeted before reaching the foot of the dune.");
+                    }
                     if(index==0&&!photographed&&agent.Character.Skin.enabled&&position.z<=house.Threshold.position.z)
                     {
                         photographed=true;
                         yield return Capture("desert-arrival.png");
                     }
                 }
-                Require(crest>4.5f&&agent.WaveCount==1&&agent.State==ParkRabbitState.Wandering&&!house.IsBusy,
+                Require(crest>4.5f&&firstWave>0&&firstWave<=5.6f&&agent.WaveCount==1&&
+                    agent.State==ParkRabbitState.Wandering&&!house.IsBusy,
                     "The animal did not cross the dune, wave, and continue walking.");
                 sample.SetActive(false);
                 Destroy(sample);
             }
-            Debug.Log("DESERT PASS: both entrances hide the spawn, cross the dune at terrain height, wave, and release the queue.");
+            Debug.Log("DESERT PASS: both entrances cross the dune at terrain height and wave at its foot within 5.6 seconds.");
         }
+        IEnumerator CheckSandSled(ParkPlayground park)
+        {
+            var ride=park.SandSled;
+            Require(ride&&ride.Sled&&Array.IndexOf(park.AnimalActions,ParkAnimalAction.SandSled)>=0&&
+                ParkLanguage.Translate(ParkPlayground.ActionLabel(ParkAnimalAction.SandSled),false)=="Ride the Sand Sled",
+                "The sand sled or its localized action is missing.");
+            foreach(var part in ride.Sled.GetComponentsInChildren<MeshRenderer>())
+                Require(!part.isPartOfStaticBatch,"A moving sand sled part was batched with the scenery.");
+            var crest=ParkDuneTerrain.SledDuneCrest;
+            Require(ParkDuneTerrain.Height(crest.x,crest.y)>ParkDuneTerrain.Height(-12.4f,24f)*2,
+                "The sled dune must be at least twice the nearby dune height.");
+
+            var house=park.Houses[0];
+            var paint=park.Drawing.Front.Paint.EncodeToPNG();
+            const float step=.05f;
+            var animals=new ParkRabbitAgent[3];
+            var started=new bool[animals.Length];
+            var finished=new bool[animals.Length];
+            var sleds=new Transform[animals.Length];
+            var parked=ride.Sled.position;
+            var parkedFacing=ride.Sled.rotation;
+            for(int i=0;i<animals.Length;i++)
+            {
+                var animal=new GameObject($"Sand sled rider probe {i+1}").AddComponent<ParkRabbitAgent>();
+                animal.Initialize(park,house,(byte)i,0,paint,paint);
+                Require(house.TryReserve(),"The sled activity probe could not enter the desert.");
+                for(int frame=0;frame<Mathf.CeilToInt((house.ExitDuration+5.5f)/step);frame++)
+                {
+                    house.Advance(step);
+                    animal.Advance(step);
+                }
+                var position=ride.Approach+new Vector3(-2.5f-i*1.15f,0,-1.1f);
+                position.y=park.SurfaceHeight(position);
+                animal.transform.position=position;
+                Require(animal.State==ParkRabbitState.Wandering&&park.TryBuildRidePath(position,ride.Approach,out _)&&
+                    animal.RequestAction(ParkAnimalAction.SandSled),"The animal could not reach or request the sand sled.");
+                animals[i]=animal;
+            }
+
+            float pullSeconds=0,peak=0;
+            int completed=0,maxSleds=0;
+            bool climbPhoto=false,slidePhoto=false,multiplePhoto=false,slopePhoto=false;
+            for(int frame=0;frame<2000&&completed<animals.Length;frame++)
+            {
+                foreach(var animal in animals) animal.Advance(step);
+                ride.Advance(step);
+                Require(ride.Sled.position==parked&&ride.Sled.rotation==parkedFacing&&ride.Sled.gameObject.activeInHierarchy,
+                    "The pickup sled moved or disappeared during a ride.");
+                maxSleds=Mathf.Max(maxSleds,ride.ActiveSledCount);
+                for(int i=0;i<animals.Length;i++)
+                {
+                    if(finished[i]) continue;
+                    var animal=animals[i];
+                    var sled=ride.SledFor(animal);
+                    if(!sled)
+                    {
+                        if(!started[i]) continue;
+                        Require(animal.ActiveAction==ParkAnimalAction.None&&(!sleds[i]||!sleds[i].gameObject.activeInHierarchy)&&
+                            park.IsSceneryClear(animal.transform.position),"The animal or its sled was left in the landing lane.");
+                        finished[i]=true;
+                        completed++;
+                        continue;
+                    }
+                    Require(sled!=ride.Sled&&(!started[i]||sleds[i]==sled),"A rider lost its own sled.");
+                    started[i]=true;
+                    sleds[i]=sled;
+                    var position=sled.position;
+                    if(ride.IsSliding(animal))CheckDescentAlignment(park,sled);
+                    else Require(Mathf.Abs(position.y-park.SurfaceHeight(position)-.022f)<.035f,"The sled left the sand surface.");
+                    for(int other=0;other<i;other++)
+                    {
+                        var leading=ride.SledFor(animals[other]);
+                        if(leading) Require(Vector3.Distance(leading.position,position)>2.85f,"Two moving sand sleds touched.");
+                    }
+                    if(i!=0) continue;
+                    peak=Mathf.Max(peak,position.y);
+                    if(ride.IsPulling(animal))
+                    {
+                        pullSeconds+=step;
+                        var feet=animal.transform.position;
+                        Require(Mathf.Abs(feet.y-park.SurfaceHeight(feet))<.016f,"The animal floated while pulling the sled.");
+                        if(!climbPhoto&&position.y>7)
+                        {
+                            climbPhoto=true;
+                            yield return Capture("desert-sled-uphill.png");
+                        }
+                    }
+                    if(!ride.IsPulling(animal)&&peak>15&&position.y<8.5f&&!slidePhoto)
+                    {
+                        slidePhoto=true;
+                        Require(Vector3.Distance(animal.transform.position,position)<.45f,"The rider lost the sled seat on the descent.");
+                        yield return Capture("desert-sled-downhill.png");
+                    }
+                    if(!slopePhoto&&ride.IsSliding(animal)&&sled.forward.y<-.48f)
+                    {
+                        slopePhoto=true;
+                        var orbit=park.OrbitCamera;
+                        var camera=Camera.main.transform;
+                        var view=new Pose(camera.position,camera.rotation);
+                        bool tracking=orbit.enabled;
+                        orbit.enabled=false;
+                        camera.position=sled.position+sled.right*8+sled.forward*3+Vector3.up*3;
+                        camera.LookAt(sled.position+Vector3.up*.5f);
+                        yield return Capture("desert-sled-slope-alignment.png");
+                        camera.SetPositionAndRotation(view.position,view.rotation);
+                        orbit.enabled=tracking;
+                    }
+                }
+                if(!multiplePhoto&&ride.ActiveSledCount==animals.Length&&peak>11)
+                {
+                    multiplePhoto=true;
+                    yield return Capture("desert-sled-multiple.png");
+                }
+            }
+            Require(completed==animals.Length&&maxSleds==animals.Length&&climbPhoto&&slidePhoto&&multiplePhoto&&slopePhoto&&
+                pullSeconds>0&&pullSeconds<11&&peak>16&&ride.ActiveSledCount==0,
+                "The three sand sleds did not complete overlapping rides and return to the pickup prop alone.");
+            var repeat=animals[0];
+            Require(repeat.RequestAction(ParkAnimalAction.SandSled),"The first rider could not ask to ride again.");
+            for(int frame=0;frame<600&&!ride.SledFor(repeat);frame++)
+            {
+                repeat.Advance(step);
+                ride.Advance(step);
+            }
+            Require(ride.SledFor(repeat)&&ride.ActiveSledCount==1,"The repeat ride did not get a new sled.");
+            repeat.gameObject.SetActive(false);
+            Require(ride.ActiveSledCount==0&&ride.Sled.position==parked,"Interrupting a ride did not clear its copy.");
+            foreach(var animal in animals)
+            {
+                animal.gameObject.SetActive(false);
+                Destroy(animal.gameObject);
+            }
+            Debug.Log($"SAND SLED PASS: {completed} riders shared the course with {maxSleds} separate sleds, {pullSeconds:F1}s uphill, stationary original, and cleanup after riding again or leaving.");
+            Debug.Log("SAND SLED GRADE PASS: both runners followed the graded descent without heading drift, cross-slope, or clipping.");
+        }
+
+        static void CheckDescentAlignment(ParkPlayground park,Transform sled)
+        {
+            var direction=ParkDuneTerrain.SledDescentDirection;
+            var heading=new Vector3(direction.x,0,direction.y);
+            var flatForward=Vector3.ProjectOnPlane(sled.forward,Vector3.up).normalized;
+            Require(Vector3.Dot(flatForward,heading)>.9999f&&Mathf.Abs(sled.right.y)<.002f&&sled.forward.y<.002f,
+                "A sand sled slid sideways, banked, or pointed uphill on the descent.");
+            var edge=sled.right*1.6f;
+            Require(Mathf.Abs(park.SurfaceHeight(sled.position-edge)-park.SurfaceHeight(sled.position+edge))<.005f,
+                "The sand lane is tilted across the runners.");
+            float closest=float.MaxValue;
+            foreach(int side in new[]{-1,1})
+            {
+                float x=side*ParkSandSled.RunnerHalfSpacing;
+                CheckContact(x,ParkSandSled.RearRunnerContact);
+                CheckContact(x,0);
+                CheckContact(x,ParkSandSled.FrontRunnerContact);
+            }
+            Require(closest<.034f,"Both sand sled runners floated above their lane.");
+
+            void CheckContact(float x,float z)
+            {
+                var contact=sled.TransformPoint(new Vector3(x,0,z));
+                float clearance=contact.y-park.SurfaceHeight(contact);
+                if(clearance<.01f||clearance>=.13f)
+                    throw new Exception($"Sand sled runner clearance {clearance:F4} at ({x:F2}, {z:F2}), " +
+                        $"sled {sled.position}, forward {sled.forward:F5}, scale {sled.lossyScale}, contact {contact:F5}.");
+                closest=Mathf.Min(closest,clearance);
+            }
+        }
+
+        static void CheckFocusedSandSledReplay(ParkPlayground park)
+        {
+            int venue=Array.FindIndex(park.Venues,item=>item.SandSled);
+            if(venue<0)return;
+            park.ChangeVenue(venue);
+            park.ShowPark();
+            var ride=park.SandSled;
+            var orbit=park.OrbitCamera;
+            ParkRabbitAgent animal=null;
+            foreach(var candidate in park.Animals)
+            {
+                if(candidate.State!=ParkRabbitState.Wandering||candidate.ActiveAction!=ParkAnimalAction.None||
+                    candidate.PendingAction!=ParkAnimalAction.None||!park.CanFollowAnimal(candidate))continue;
+                animal=candidate;
+                break;
+            }
+            Require(animal,"There was no animal available for the focused replay probe.");
+            const float step=.05f;
+            var start=ride.Approach+Vector3.left*2;
+            start.y=park.SurfaceHeight(start);
+            animal.transform.position=start;
+            TapAnimal();
+            Require(park.RequestAnimalAction(ParkAnimalAction.SandSled),"The selected animal could not request the first ride.");
+            for(int frame=0;frame<800&&!ride.IsDismounting(animal);frame++)Advance();
+            Require(ride.IsDismounting(animal),"The first ride did not reach the landing.");
+
+            orbit.CancelAnimalFollow(true);
+            TapAnimal();
+            var firstSled=ride.SledFor(animal);
+            Require(park.RequestAnimalAction(ParkAnimalAction.SandSled)&&animal.PendingAction==ParkAnimalAction.SandSled,
+                "Pressing the action on a selected animal at landing did not queue the next ride.");
+            Require(!park.RequestAnimalAction(ParkAnimalAction.SandSled),"Repeated taps queued another replay.");
+            for(int frame=0;frame<200;frame++)
+            {
+                Advance();
+                var copy=ride.SledFor(animal);
+                if(copy&&copy!=firstSled)break;
+            }
+            var secondSled=ride.SledFor(animal);
+            Require(secondSled&&secondSled!=firstSled,"The animal did not return for its next sled while selected.");
+            for(int frame=0;frame<800&&ride.SledFor(animal);frame++)Advance();
+            Require(animal.ActiveAction==ParkAnimalAction.None&&animal.PendingAction==ParkAnimalAction.None&&
+                park.RequestAnimalAction(ParkAnimalAction.SandSled),"The selected animal could not request a ride just after getting off.");
+            for(int frame=0;frame<200&&!ride.SledFor(animal);frame++)Advance();
+            Require(ride.SledFor(animal)&&ride.SledFor(animal)!=secondSled,"The selected animal did not take a fresh sled from the exit.");
+            Debug.Log("FOCUSED SAND SLED REPLAY PASS: requests while stepping off and after dismount both start a new ride with the camera still following.");
+
+            void TapAnimal()
+            {
+                var point=animal.transform.position+Vector3.up*.65f;
+                orbit.focus=point;
+                orbit.distance=14;
+                orbit.AdvanceAnimalFollow(step);
+                var screen=Camera.main.WorldToScreenPoint(point);
+                orbit.BeginAnimalTap(screen,-1);
+                orbit.EndAnimalTap(screen,-1);
+                Require(orbit.FollowTarget==animal,"The selected animal did not enter camera follow.");
+            }
+
+            void Advance()
+            {
+                park.Advance(step);
+                orbit.AdvanceAnimalFollow(step);
+                Require(orbit.FollowTarget==animal,"The camera lost the animal before it took another sled.");
+            }
+        }
+
+        IEnumerator CheckForestRides(ParkPlayground park)
+        {
+            var rides=park.ForestRides;
+            var actions=new[]{ParkAnimalAction.StumpHop,ParkAnimalAction.WoodenBridge,ParkAnimalAction.Zipline};
+            var english=new[]{"Hop Across Stumps","Cross the Log Bridge","Ride the Zipline"};
+            Require(rides?.Length==3&&park.AnimalActions.Length==3&&rides[0].transform.childCount==5,
+                "The forest is missing one of its three rides or five stepping stumps.");
+            for(int i=0;i<actions.Length;i++)
+                Require(park.AnimalActions[i]==actions[i]&&rides[i].Action==actions[i]&&
+                    ParkLanguage.Translate(ParkPlayground.ActionLabel(actions[i]),false)==english[i],
+                    "A forest action is missing from the selected animal's actions or English text.");
+            var trolley=rides[2].Trolley;
+            var landingPost=rides[2].transform.Find("Landing cable anchor");
+            Require(landingPost&&trolley&&Array.TrueForAll(trolley.GetComponentsInChildren<MeshRenderer>(),r=>!r.isPartOfStaticBatch),
+                "The forest trolley is missing or cannot move independently of the cable.");
+            var trolleyStart=trolley.position;
+
+            var house=park.Houses[0];
+            var paint=park.Drawing.Front.Paint.EncodeToPNG();
+            var animal=new GameObject("Forest activity probe").AddComponent<ParkRabbitAgent>();
+            animal.Initialize(park,house,0,0,paint,paint);
+            Require(house.TryReserve(),"The forest activity probe could not leave the cabin.");
+            for(int step=0;step<Mathf.CeilToInt((house.ExitDuration+5.5f)/.05f);step++)
+            {
+                house.Advance(.05f);
+                animal.Advance(.05f);
+            }
+            Require(animal.State==ParkRabbitState.Wandering,"The forest activity probe did not finish waving.");
+            for(int i=0;i<rides.Length;i++)
+            {
+                var ride=rides[i];
+                Require(park.TryBuildRidePath(animal.transform.position,ride.Approach,out _)&&animal.RequestAction(actions[i]),
+                    "A forest ride could not be requested or reached from the lawn.");
+                float highest=0,trolleyTravel=0;
+                int jumps=0;
+                bool airborne=false,started=false,photographed=false,photographedExit=false;
+                Vector3 exitSide=Vector3.zero;
+                for(int frame=0;frame<1700;frame++)
+                {
+                    animal.Advance(.05f);
+                    ride.Advance(.05f);
+                    started|=animal.ActiveAction==actions[i];
+                    float height=animal.transform.position.y;
+                    highest=Mathf.Max(highest,height);
+                    trolleyTravel=Mathf.Max(trolleyTravel,Vector3.Distance(trolleyStart,trolley.position));
+                    if(ride.IsAirborne&&!airborne)jumps++;
+                    airborne=ride.IsAirborne;
+                    if(!photographed&&(i==0&&jumps>=3&&airborne||i==1&&height>1.25f||i==2&&trolleyTravel>9))
+                    {
+                        photographed=true;
+                        yield return Capture($"forest-action-{i+1}.png");
+                    }
+                    if(i==2&&trolleyTravel>21)
+                    {
+                        if(exitSide==Vector3.zero)
+                        {
+                            var glide=Vector3.ProjectOnPlane(trolley.position-trolleyStart,Vector3.up).normalized;
+                            exitSide=Vector3.Cross(Vector3.up,glide);
+                        }
+                        var fromPost=Vector3.ProjectOnPlane(animal.transform.position-landingPost.position,Vector3.up);
+                        Require(fromPost.magnitude>.86f,"The zipline rider crossed through the landing post.");
+                        if(!photographedExit&&Vector3.Dot(fromPost,exitSide)>1.13f)
+                        {
+                            photographedExit=true;
+                            var orbit=park.OrbitCamera;
+                            var camera=Camera.main;
+                            orbit.enabled=false;
+                            var forward=Vector3.Cross(exitSide,Vector3.up);
+                            camera.transform.position=landingPost.position+exitSide*5-forward*4.7f+Vector3.up*3.9f;
+                            camera.transform.LookAt(landingPost.position+exitSide*.58f+Vector3.up*.47f);
+                            yield return Capture("forest-zipline-side-exit.png");
+                            orbit.enabled=true;
+                        }
+                    }
+                    if(started&&animal.ActiveAction==ParkAnimalAction.None)break;
+                }
+                var end=animal.transform.position;
+                Require(started&&photographed&&animal.ActiveAction==ParkAnimalAction.None&&
+                    park.IsSceneryClear(end)&&Mathf.Abs(end.y-park.SurfaceHeight(end))<.01f,
+                    "A forest ride did not finish on the walkable grass.");
+                if(i==0)Require(jumps==6&&end.x>-4,"The animal did not hop between all five stumps and back onto the grass.");
+                if(i==1)Require(highest>1.26f&&end.z>2.2f,"The animal did not climb and cross the wooden ladder.");
+                if(i==2)Require(highest>4.4f&&trolleyTravel>21&&photographedExit&&Vector3.Dot(end-landingPost.position,exitSide)>2.1f&&
+                    Vector3.Distance(trolley.position,trolleyStart)<.01f,"The animal did not climb, ride the diagonal cable and land.");
+            }
+            animal.gameObject.SetActive(false);
+            Destroy(animal.gameObject);
+            Debug.Log("FOREST RIDES PASS: five stumps, footstep ladder crossing, and zipline landing clear of the post with a side exit.");
+        }
+
+        IEnumerator CheckElephantTrain(ParkPlayground park)
+        {
+            var train=park.Train;
+            var orbit=park.OrbitCamera;
+            var camera=Camera.main;
+            var locomotive=train.transform.Find("Elephant locomotive");
+            var venue=park.Venues[park.VenueIndex].Root.transform;
+            var station=venue.Find("Elephant train station/Station boarding deck");
+            Require(locomotive&&station&&!venue.Find("Elephant train exit platform and footbridge"),
+                "The train must have only its original platform.");
+
+            orbit.focus=new Vector3(-9.5f,1.2f,-32.6f);
+            orbit.distance=Screen.width>Screen.height?46:86;
+            orbit.yaw=park.Venues[park.VenueIndex].Yaw;
+            orbit.pitch=53;
+            orbit.AdvanceAnimalFollow(.05f);
+            var overview=new Pose(orbit.transform.position,orbit.transform.rotation);
+
+            var head=camera.WorldToScreenPoint(locomotive.TransformPoint(new Vector3(0,1.9f,1.5f)));
+            Require(head.z>0&&Screen.safeArea.Contains(head),"The smoke test camera framed the locomotive outside the viewport.");
+            Tap(head);
+            CheckView();
+            yield return Capture("elephant-first-person-station.png");
+            train.Advance(1.8f);
+            train.Advance(8f);
+            // Give the mounted camera a LateUpdate after the train moves.
+            yield return new WaitForEndOfFrame();
+            CheckView();
+            yield return Capture("elephant-first-person-moving.png");
+            Tap(new Vector2(Screen.width*.5f,Screen.height*.46f));
+            Require(Vector3.Distance(orbit.transform.position,overview.position)<.001f&&
+                Quaternion.Angle(orbit.transform.rotation,overview.rotation)<.01f,
+                "Tapping out of the elephant view did not restore the previous angle and zoom.");
+            Debug.Log("ELEPHANT CAMERA PASS: engine head tap, moving first-person view, and scene tap restores the previous view.");
+
+            var paint=park.Drawing.Front.Paint.EncodeToPNG();
+            var passengers=new ParkRabbitAgent[2];
+            for(int i=0;i<passengers.Length;i++)
+            {
+                var house=park.Houses[i];
+                var animal=new GameObject("Train passenger probe").AddComponent<ParkRabbitAgent>();
+                animal.Initialize(park,house,i,i,paint,paint);
+                Require(house.TryReserve(),"Train probe could not open the arrival door.");
+                for(int step=0;step<Mathf.CeilToInt((house.ExitDuration+5.5f)/.05f);step++)
+                {
+                    house.Advance(.05f);
+                    animal.Advance(.05f);
+                }
+                Require(train.TryRequestedRide(animal),"Train probe could not queue on the boarding side.");
+                passengers[i]=animal;
+            }
+            for(int attempt=0;attempt<1800&&train.SeatedAnimals<passengers.Length;attempt++)train.Advance(.05f);
+            Require(train.SeatedAnimals==passengers.Length,"Not all waiting passengers boarded the train.");
+            int lap=train.CompletedLaps;
+            for(int step=0;step<1500&&train.CompletedLaps==lap;step++)train.Advance(.05f);
+            Require(train.Phase==ParkElephantTrain.RidePhase.Unloading,"The train did not stop to unload.");
+            var tookPlatformSteps=new bool[passengers.Length];
+            for(int step=0;step<100&&train.SeatedAnimals>0;step++)
+            {
+                train.Advance(.05f);
+                for(int i=0;i<passengers.Length;i++)
+                {
+                    var animal=passengers[i];
+                    var point=animal.transform.position;
+                    Require(point.z>=ParkElephantTrain.StationRailZ-.01f,"A passenger moved toward the far side of the train.");
+                    if(point.z>ParkElephantTrain.StationRailZ+1.7f&&point.y>ParkElephantTrain.DeckHeight+.10f)
+                    {
+                        Require(Vector3.Dot(-animal.transform.forward,Vector3.forward)>.8f,
+                            "A passenger did not face the platform while stepping down.");
+                        tookPlatformSteps[i]=true;
+                    }
+                }
+            }
+            for(int i=0;i<passengers.Length;i++)
+            {
+                var animal=passengers[i];
+                var point=animal.transform.position;
+                Require(tookPlatformSteps[i]&&animal.ActiveAction==ParkAnimalAction.None&&
+                    point.z>ParkElephantTrain.StationRailZ+4.5f&&Mathf.Abs(point.y-ParkElephantTrain.DeckHeight)<.01f&&
+                    Mathf.Abs(point.y-park.SurfaceHeight(point))<.01f,
+                    "A passenger did not finish disembarking on the boarding platform.");
+            }
+            yield return Capture("amusement-train-platform-unload.png");
+            foreach(var animal in passengers)
+            {
+                animal.gameObject.SetActive(false);
+                Destroy(animal.gameObject);
+            }
+            Debug.Log("TRAIN RETURN PASS: two passengers stepped down forward onto the same platform where they boarded.");
+
+            void Tap(Vector2 screen)
+            {
+                orbit.BeginAnimalTap(screen,-1);
+                orbit.EndAnimalTap(screen,-1);
+            }
+            void CheckView()
+            {
+                var eye=train.RideView(true);
+                Require(Vector3.Distance(orbit.transform.position,eye.position)<.001f&&
+                    Quaternion.Angle(orbit.transform.rotation,eye.rotation)<.01f,
+                    "The camera did not stay at the front elephant's viewpoint.");
+            }
+        }
+
         static void CheckCrowdSeparation(ParkPlayground park)
         {
             park.Advance(8f);
@@ -443,6 +1041,10 @@ namespace PeacePark
             for(int venue=0;venue<venueCount;venue++)
             {
                 park.ChangeVenue(venue);
+                // This probe measures pedestrians separating on the lawn.
+                var rides=Array.FindAll(new Behaviour[]{park.Wheel,park.Train,park.Carousel,park.Trampoline,park.Seesaw,park.Roundabout},
+                    ride=>ride&&ride.enabled);
+                foreach(var ride in rides)ride.enabled=false;
                 var area=park.WalkArea;
                 var corner=new Vector3(area.xMin,0,area.yMin);
                 corner.y=park.SurfaceHeight(corner);
@@ -465,6 +1067,7 @@ namespace PeacePark
                             $"Two animals stayed tangled in {park.ThemeName}: {offset.magnitude:F3}.");
                     }
                 }
+                foreach(var ride in rides)ride.enabled=true;
             }
             Debug.Log("CROWD SEPARATION PASS: 15 animals placed on the same corner spread out in all venues.");
         }
@@ -530,7 +1133,7 @@ namespace PeacePark
                 park.IsSceneryClear(new Vector3(0,0,-5.5f)),
                 "Playground equipment or the walkable aisle around it is missing.");
             var initialPlatformRotation=platform.localRotation;
-            yield return new WaitForSeconds(.25f);
+            park.Advance(.25f);
             Require(Quaternion.Angle(initialPlatformRotation,platform.localRotation)>1f,
                 "The roundabout platform did not rotate.");
             var floor=room.Find("Rectangular play floor").GetComponent<MeshRenderer>().bounds;
@@ -687,16 +1290,29 @@ namespace PeacePark
                 "The mobile contact shadow did not follow the walking animal.");
             Debug.Log("CONTACT SHADOW PASS: animal appears and releases the closed door, and its late-created shadow follows it without a collider.");
             Require(ride&&ride.Available,"The cafe slide is not available.");
-            sample.transform.SetPositionAndRotation(ride.Approach+Vector3.forward*.50f,ride.transform.rotation);
-            Require(agent.TryStartSlide()&&!ride.Available,"The animal did not reserve the slide.");
+            var stairDirection=Vector3.ProjectOnPlane(ride.Climb(.025f)-ride.Approach,Vector3.up).normalized;
+            var side=Vector3.Cross(Vector3.up,stairDirection);
+            sample.transform.SetPositionAndRotation(ride.Approach-stairDirection*1.30f-side*1.65f,ride.transform.rotation);
+            Require(agent.RequestAction(ParkAnimalAction.Slide),"The animal did not accept the slide action.");
+            agent.Advance(.05f);
+            Require(agent.CurrentActivity==ParkRabbitAgent.Activity.ApproachSlide&&!ride.Available,"The animal did not reserve the slide.");
             Require(!ride.Reserve(agent)&&!door.TryReserve(),"The occupied slide accepted another reservation or entrance.");
             var stages=new System.Collections.Generic.HashSet<ParkRabbitAgent.Activity>();
+            bool facedStairsBeforeClimb=false;
             for(int i=0;i<350&&agent.CurrentActivity!=ParkRabbitAgent.Activity.None;i++)
             {
                 agent.Advance(.05f);
                 var activity=agent.CurrentActivity;
                 bool firstFrame=stages.Add(activity);
-                if(activity==ParkRabbitAgent.Activity.Climb&&firstFrame)Require(sample.transform.position.y<.1f,"Stairs began above floor level.");
+                var position=sample.transform.position;
+                if(activity==ParkRabbitAgent.Activity.ApproachSlide&&Vector3.Distance(position,ride.Approach)<.30f)
+                {
+                    Require(Vector3.Dot(-sample.transform.forward,stairDirection)>.96f,"The final approach did not face up the stairs.");
+                    facedStairsBeforeClimb=true;
+                }
+                if(activity==ParkRabbitAgent.Activity.Climb&&position.y<.30f)
+                    Require(Vector3.Dot(-sample.transform.forward,stairDirection)>.96f&&(!firstFrame||position.y<.1f),
+                        "The animal turned away or skipped the first stair at the start of the climb.");
                 if(activity==ParkRabbitAgent.Activity.Sit&&firstFrame)Require(sample.transform.position.y>6f,"The animal did not reach the platform.");
                 if(activity==ParkRabbitAgent.Activity.Slide&&agent.transform.position.y<3.5f&&firstFrame==false&&
                     !stages.Contains(ParkRabbitAgent.Activity.LeaveSlide))
@@ -707,7 +1323,7 @@ namespace PeacePark
             }
             for(int i=0;i<130&&agent.CurrentActivity!=ParkRabbitAgent.Activity.None;i++)
             {agent.Advance(.05f);stages.Add(agent.CurrentActivity);}
-            Require(stages.Contains(ParkRabbitAgent.Activity.Climb)&&stages.Contains(ParkRabbitAgent.Activity.Sit)&&
+            Require(facedStairsBeforeClimb&&stages.Contains(ParkRabbitAgent.Activity.Climb)&&stages.Contains(ParkRabbitAgent.Activity.Sit)&&
                 stages.Contains(ParkRabbitAgent.Activity.Slide)&&stages.Contains(ParkRabbitAgent.Activity.LeaveSlide)&&
                 agent.CurrentActivity==ParkRabbitAgent.Activity.None&&ride.Available&&park.IsSceneryClear(sample.transform.position)&&
                 Vector3.Distance(sample.transform.position,ride.Exit)<.08f,"The animal did not finish the slide and return to the floor.");
@@ -720,10 +1336,70 @@ namespace PeacePark
                 agent.Advance(2.2f);
                 Require(agent.CurrentActivity==ParkRabbitAgent.Activity.None,"An activity did not return to wandering.");
             }
-            Debug.Log("CAFE ACTIVITIES PASS: stairs, sit, slide, walk out, hop and dance.");
+            Debug.Log("CAFE ACTIVITIES PASS: straight approach into stairs, sit, slide, walk out, hop and dance.");
+            yield return CheckRoundabout(park,agent,platform);
             Destroy(sample);
             yield return CheckPoleEntrance(park);
             Debug.Log("PLAYGROUND PASS: two animated entrances, wave, grounded wandering and equipment avoidance.");
+        }
+        IEnumerator CheckRoundabout(ParkPlayground park,ParkRabbitAgent agent,Transform platform)
+        {
+            var ride=park.Roundabout;
+            Require(ride&&Array.IndexOf(park.AnimalActions,ParkAnimalAction.Roundabout)>=0,
+                "The playground does not offer the roundabout action.");
+            for(int rail=1;rail<=3;rail++)
+            {
+                var grip=platform.Find("Handrail grip "+rail);
+                Require(grip&&Vector3.ProjectOnPlane(grip.localPosition,Vector3.up).magnitude<1.5f,
+                    "A roundabout handrail is too close to the outer edge.");
+            }
+            var start=ride.transform.position+Vector3.forward*3.95f;
+            agent.transform.position=start;
+            Require(!park.WalkingSegmentClear(start,ride.transform.position-Vector3.forward*3.8f)&&
+                agent.RequestAction(ParkAnimalAction.Roundabout),"The roundabout request did not need a path around the deck.");
+            const float dt=.05f;
+            agent.Advance(dt);
+            Require(agent.ActiveAction==ParkAnimalAction.Roundabout,"The roundabout request did not reserve a place.");
+            float rotation=0;
+            bool boarding=false,captured=false,sawDismount=false,walkedIn=false,walkedOut=false;
+            for(int i=0;i<1000&&agent.ActiveAction==ParkAnimalAction.Roundabout;i++)
+            {
+                var before=platform.localRotation;
+                ride.Advance(dt);
+                var position=agent.transform.position;
+                float moved=Quaternion.Angle(before,platform.localRotation);
+                float height=position.y-start.y;
+                var radial=Vector3.ProjectOnPlane(position-ride.transform.position,Vector3.up);
+                boarding|=height>.01f;
+                if(!boarding)Require(park.IsSceneryClear(position),"The animal walked through the roundabout base.");
+                if(height>.5f&&moved<.001f&&radial.magnitude>2.09f&&radial.magnitude<2.46f)
+                {
+                    if(rotation<.01f)walkedIn=true;
+                    if(rotation>350)walkedOut=true;
+                }
+                if(height>.5f&&moved>.001f)
+                {
+                    rotation+=moved;
+                    Require(radial.magnitude<2f&&Vector3.Dot(agent.transform.forward,radial.normalized)>.999f&&
+                        Mathf.Abs(ride.SurfaceY(position)-position.y)<.002f,
+                        "The animal lost its footing or stopped facing its rail while spinning.");
+                    if(!captured&&rotation>45)
+                    {
+                        captured=true;
+                        park.OrbitCamera.enabled=false;
+                        Camera.main.transform.position=position-agent.transform.forward*4.6f+agent.transform.right*4.1f+Vector3.up*3;
+                        Camera.main.transform.LookAt(position+Vector3.up*.67f);
+                        yield return Capture("playground-roundabout-ride.png");
+                        park.OrbitCamera.enabled=true;
+                    }
+                }
+                if(rotation>350&&height>.01f&&height<.48f)sawDismount=true;
+            }
+            Require(captured&&walkedIn&&walkedOut&&sawDismount&&rotation>357&&rotation<363&&agent.ActiveAction==ParkAnimalAction.None&&
+                park.IsSceneryClear(agent.transform.position)&&Mathf.Abs(agent.transform.position.y-start.y)<.01f&&
+                Vector3.Dot(agent.transform.forward,ride.transform.forward)>.999f,
+                "The animal did not complete a full roundabout lap and return to the floor.");
+            Debug.Log("ROUNDABOUT RIDE PASS: action, obstacle-aware approach, boarding, a full lap and grounded dismount.");
         }
         IEnumerator CheckPoleEntrance(ParkPlayground park)
         {
@@ -787,6 +1463,46 @@ namespace PeacePark
                 "The pole animal did not wave, roam and release the entrance.");
             Destroy(sample);
             Debug.Log("POLE ARRIVAL PASS: one complete turn with both hands gripping, ground-level wave and released queue.");
+        }
+
+        static void CheckOpenEntranceDispatch(ParkPlayground park)
+        {
+            park.ChangeVenue(0);
+            var occupied=park.Houses[0];
+            var available=park.Houses[1];
+            Require(park.PendingCount==0&&park.Animals.Count+4<=ParkPlayground.AnimalLimit&&
+                !available.IsBusy&&occupied.TryReserve(),"The entrance dispatch probe could not hold one door open.");
+            var front=park.Drawing.Front.Paint.GetRawTextureData();
+            var back=park.Drawing.Back.Paint.GetRawTextureData();
+            int firstId=park.SubmissionCount+1;
+            int startCount=park.Animals.Count;
+            for(int i=0;i<4;i++)
+                Require(park.SubmitLan(AnimalKind.Rabbit,front,back)==ParkLan.Accepted,"A request in the LAN burst was dropped.");
+
+            park.Advance(.05f);
+            CheckNext(0,1,3);
+            park.Advance(available.ExitDuration+available.DoorDuration*2+.15f);
+            Require(occupied.IsBusy,"The test entrance was released too soon.");
+            CheckNext(1,1,2);
+            occupied.CloseAfterExit();
+            park.Advance(occupied.DoorDuration+.1f);
+            CheckNext(2,0,1);
+            park.Advance(12);
+            Require(park.PendingCount==0&&park.Animals.Count==startCount+4,
+                "A queued arrival was lost when the entrance reopened.");
+            for(int i=0;i<4;i++)
+            {
+                var animal=park.Animals[startCount+i];
+                Require(animal.Id==firstId+i&&animal.WaveCount==1,"A burst arrival was duplicated or skipped its greeting.");
+            }
+            Debug.Log("OPEN ENTRANCE DISPATCH PASS: the open door took the first two LAN submissions while the other was occupied; the reopened door took the next.");
+
+            void CheckNext(int offset,int door,int pending)
+            {
+                Require(park.PendingCount==pending&&park.Animals.Count==startCount+offset+1&&
+                    park.Animals[startCount+offset].Id==firstId+offset&&park.Animals[startCount+offset].HouseIndex==door,
+                    "The oldest network submission did not use the first door that became available.");
+            }
         }
 
         static void CheckAnimalLimit(ParkPlayground park)
@@ -1055,7 +1771,11 @@ namespace PeacePark
                 agent.Initialize(park,house,0,0,front,back,false,(AnimalKind)i);
                 Require(agent.Character.Skin.sharedMesh.indexFormat==UnityEngine.Rendering.IndexFormat.UInt16,
                     "Animal exceeded the mobile skin index budget: "+(AnimalKind)i);
-                if(checkedSkins.Add((AnimalKind)i))CheckSkinWeights(agent.Character);
+                if(checkedSkins.Add((AnimalKind)i))
+                {
+                    CheckSkinWeights(agent.Character);
+                    CheckSpringGait(agent.Character);
+                }
                 float scale=sample.transform.localScale.x;
                 var kind=(AnimalKind)i;
                 float original=kind==AnimalKind.Giraffe?.40f:kind==AnimalKind.Elephant?.39f:.42f;
@@ -1072,6 +1792,35 @@ namespace PeacePark
             }
             Debug.Log("FULL SIZE EMERGENCE PASS: every animal exits at 130% scale through its venue's doorway.");
             Debug.Log("SKIN WEIGHTS PASS: all species have sorted, normalized influences and rigid head vertices are bound to the head bone.");
+        }
+        static void CheckSpringGait(RabbitCharacter character)
+        {
+            var mesh=new Mesh();
+            var skin=character.Skin;
+            float lowest=0,highest=0;
+            int groundedFrames=0;
+            const int framesPerStep=48;
+            try
+            {
+                for(int frame=0;frame<framesPerStep*2;frame++)
+                {
+                    character.PlayWalkingPose(frame*Mathf.PI/framesPerStep);
+                    skin.BakeMesh(mesh,false);
+                    mesh.RecalculateBounds();
+                    float height=mesh.bounds.min.y;
+                    lowest=Mathf.Min(lowest,height);
+                    highest=Mathf.Max(highest,height);
+                    if(Mathf.Abs(height)<.003f)groundedFrames++;
+                }
+                Require(lowest>-.003f&&highest>.008f&&highest<.085f&&groundedFrames>=70&&groundedFrames<96,
+                    $"{character.Kind} lost its planted step or controlled lift-off. Floor range {lowest:F4} to {highest:F4}; planted frames {groundedFrames}.");
+                Debug.Log($"SPRING GAIT PASS: {character.Kind}, {groundedFrames}/96 grounded frames, lift {highest:F3}.");
+            }
+            finally
+            {
+                character.PlayIdlePose();
+                Destroy(mesh);
+            }
         }
         static void CheckSkinWeights(RabbitCharacter character)
         {

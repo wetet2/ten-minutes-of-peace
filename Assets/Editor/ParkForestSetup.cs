@@ -61,13 +61,17 @@ namespace PeacePark.Editor
 
             MakePond(root, nature, sphere, cylinder, water, rim, pad, petal, pollen);
             PlantForest(nature);
+            var obstacles = new List<Rect>();
+            var rides = ParkForestRidesSetup.Create(root, Ground, obstacles);
             Debug.Log($"ULTIMATE NATURE: placed {nature.Count} instances from {nature.ModelsLoaded} prefabs.");
             return new ParkVenue
             {
-                Name="숲", Root=root.gameObject, Houses=new[]{house},
-                LawnHeight=Ground, WalkArea=Rect.MinMaxRect(-9.6f,-7.5f,9.6f,2.3f),
+                Name="숲", Root=root.gameObject, Houses=new[]{house}, ForestRides=rides,
+                LawnHeight=Ground, WalkArea=Rect.MinMaxRect(-14.75f,-11.45f,14.45f,2.9f),
+                WalkObstacles=obstacles.ToArray(),
                 PondCenter=PondCenter, PondRadii=PondSize+new Vector2(.48f,.48f),
-                Focus=new Vector3(0,1.5f,1.1f), Distance=30.8f, Yaw=-6, Pitch=32,
+                Focus=new Vector3(0,2.1f,-1.2f), Distance=39.5f, Yaw=-6, Pitch=34,
+                MaxDistance=58, CameraPanLimits=new Vector2(20,16),
                 Sky=new Color32(196,227,214,255)
             };
         }
@@ -204,6 +208,7 @@ namespace PeacePark.Editor
                     float angle=(i+(float)random.NextDouble()*.55f)*2*Mathf.PI/count;
                     float radius=15.2f+ring*7.7f+(float)random.NextDouble()*2.5f;
                     var p=new Vector3(Mathf.Cos(angle)*radius*1.10f,Ground,Mathf.Sin(angle)*radius*.86f+1.5f);
+                    if(ring==0&&p.z>-12.8f&&p.z<4.65f&&Mathf.Abs(p.x)<15.3f)continue;
                     if(ring==0&&p.z< -6&&Mathf.Abs(p.x)<8)continue;
                     if(ring==1&&p.z< -13&&Mathf.Abs(p.x)<4)continue;
                     float height=ring==0?5.5f:7f;

@@ -61,17 +61,32 @@ Shader "PeacePark/RabbitPaint"
                 {
                     if(p.z>.58 && p.y<1.58 && p.x>.15)
                         return smoothstep(.02,.31,sin((p.x*.67-p.y*.52+p.z*.55)*24))*.90;
-                    if(p.y<2.59 || p.z>-.17)return 0;
+                    if(p.y<2.60)return 0;
                     float x=abs(p.x);
                     float cheek=0;
                     UNITY_UNROLL for(int j=0;j<3;j++)
                     {
-                        float stripeCenter=3.22-j*.205+.31*(x-.64)+.045*sin(x*9+j);
-                        cheek=max(cheek,(1-smoothstep(.035,.067,abs(p.y-stripeCenter)))*smoothstep(.57,.75,x));
+                        float tipX=.62+j*.025;
+                        float stripeX=clamp(x,tipX,.99);
+                        float t=(stripeX-tipX)/(.99-tipX);
+                        float stripeY=3.21-j*.179+.115*t*t;
+                        float radius=lerp(.016,.038,t);
+                        float distanceToStripe=length(float2(x-stripeX,p.y-stripeY));
+                        cheek=max(cheek,1-smoothstep(radius*.85,radius+.010,distanceToStripe));
                     }
-                    float brow=(1-smoothstep(.035,.068,abs(p.y-3.48-.12*x)))*(1-smoothstep(.20,.44,x));
-                    float crown=(1-smoothstep(.045,.089,abs(p.y-3.67)))*(1-smoothstep(.13,.33,x));
-                    return max(cheek,max(brow,crown))*.92;
+                    float crown=0;
+                    UNITY_UNROLL for(int k=-1;k<=1;k++)
+                    {
+                        float top=3.88-.035*abs(k);
+                        float stripeY=clamp(p.y,top-.17,top);
+                        float t=(stripeY-(top-.17))/.17;
+                        float stripeX=k*lerp(.182,.22,t);
+                        float radius=lerp(.018,.043,t);
+                        float distanceToStripe=length(float2(p.x-stripeX,p.y-stripeY));
+                        crown=max(crown,1-smoothstep(radius*.82,radius+.009,distanceToStripe));
+                    }
+                    float cheekFade=1-smoothstep(.49,.72,abs(p.z));
+                    return max(cheek*cheekFade,crown)*.88;
                 }
                 if(_Species == 4 || _Species == 5)
                 {
@@ -93,6 +108,40 @@ Shader "PeacePark/RabbitPaint"
                 float muzzle=length(float2(p.x/.56,(p.y-2.83)/.36));
                 return (1-smoothstep(.88,1.04,min(brow,muzzle)))*(1-smoothstep(-.51,-.24,p.z));
             }
+            float TigerMouth(float3 p)
+            {
+                float x=abs(p.x);
+                float lipX=min(x,.274);
+                float lipY=2.785-.063*sin(3.141593*lipX/.274);
+                float lip=1-smoothstep(.014,.024,length(float2(x-lipX,p.y-lipY)));
+                float split=(1-smoothstep(.011,.018,x))*smoothstep(2.778,2.790,p.y)
+                    *(1-smoothstep(2.91,2.94,p.y));
+                return max(lip,split)*(1-smoothstep(-.87,-.70,p.z));
+            }
+            fixed3 CrocodileColors(float3 p,fixed3 paint)
+            {
+                float rear=smoothstep(.35,.61,p.z);
+                float armor=rear*smoothstep(1.50,2.05,p.y)*(1-smoothstep(2.48,2.63,p.y));
+                float tailBands=rear*(1-smoothstep(1.21,1.48,p.y))*smoothstep(.26,.78,sin(p.z*24-p.y*6));
+                paint=lerp(paint,paint*fixed3(.62,.71,.62),max(armor*.64,tailBands*.36));
+                float muzzle=1-smoothstep(-.74,-.49,p.z);
+                float lipY=2.680+.103*smoothstep(-1.59,-.65,p.z);
+                float chin=muzzle*(1-smoothstep(lipY-.05,lipY-.016,p.y));
+                paint=lerp(paint,paint*.59+fixed3(.41,.38,.29),chin*.57);
+                float mouthMask=muzzle*(1-smoothstep(.021,.045,abs(p.y-lipY)));
+                return lerp(paint,fixed3(.13,.15,.105),mouthMask*.97);
+            }
+            fixed3 HippoColors(float3 p,fixed3 paint)
+            {
+                float x=abs(p.x);
+                float muzzle=(1-smoothstep(-.90,-.67,p.z))*(1-smoothstep(3.16,3.24,p.y));
+                float tint=muzzle*(1-smoothstep(.68,.85,x));
+                paint=lerp(paint,paint*.56+fixed3(.44,.34,.37),tint*.52);
+                float t=saturate(x/.72);
+                float lipY=2.648+.119*t*t;
+                float mouth=(1-smoothstep(.033,.051,abs(p.y-lipY)))*(1-smoothstep(.658,.744,x))*muzzle;
+                return lerp(paint,fixed3(.20,.13,.16),mouth*.94);
+            }
             fixed4 frag(v2f i):SV_Target
             {
                 #if defined(PEACE_PARK_ANIMAL_FADING)
@@ -104,6 +153,14 @@ Shader "PeacePark/RabbitPaint"
                 float side=i.paint.z;
                 fixed4 painting=lerp(front,back,side);
                 fixed3 albedo=lerp(_BaseColor.rgb,painting.rgb,painting.a);
+                if(_Species==1)
+                {
+                    float3 p=i.rest;
+                    float pads=length(float2((abs(p.x)-.165)/.31,(p.y-2.82)/.22));
+                    float paleMuzzle=(1-smoothstep(.75,1.07,pads))*(1-smoothstep(-.87,-.67,p.z));
+                    albedo=lerp(albedo,fixed3(1,.94,.82),paleMuzzle*.64);
+                    albedo=lerp(albedo,fixed3(.20,.13,.11),TigerMouth(p));
+                }
                 albedo=lerp(albedo,albedo*fixed3(.31,.23,.19),Marking(i.rest));
                 if(_Species==6)
                 {
@@ -118,6 +175,8 @@ Shader "PeacePark/RabbitPaint"
                 }
                 if(_Species==9)
                     albedo=lerp(albedo,albedo*fixed3(.69,.64,.62),GorillaFace(i.rest));
+                if(_Species==7)albedo=CrocodileColors(i.rest,albedo);
+                if(_Species==8)albedo=HippoColors(i.rest,albedo);
                 float3 n=normalize(i.worldNormal);
                 float3 l=normalize(_WorldSpaceLightPos0.xyz);
                 float shadow=SHADOW_ATTENUATION(i);

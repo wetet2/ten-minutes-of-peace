@@ -12,6 +12,8 @@ namespace PeacePark
 
         internal const float EntrySeconds=1.15f, DescentSeconds=3.55f, StandSeconds=.36f, ExitWalkSeconds=.78f;
         internal Vector3 Approach=>transform.TransformPoint(Steps[0]);
+        internal Vector3 StairDirection=>Vector3.ProjectOnPlane(transform.TransformVector(Steps[1]-Steps[0]),Vector3.up).normalized;
+        internal Quaternion StairFacing=>Quaternion.LookRotation(-StairDirection);
         public Vector3 Exit=>transform.TransformPoint(Runout[Runout.Length-1]);
         internal bool Available=>isActiveAndEnabled&&!rider&&!Entrance.IsBusy;
 

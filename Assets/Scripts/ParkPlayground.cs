@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace PeacePark
 {
-    public sealed class ParkPlayground : MonoBehaviour
+    public sealed partial class ParkPlayground : MonoBehaviour
     {
         internal const int AnimalLimit=15;
         internal const float AnimalFadeDuration=1.2f;
@@ -18,18 +18,19 @@ namespace PeacePark
         [SerializeField] string themeName="공원";
         public bool ManualSimulation {get;set;}
         public IReadOnlyList<ParkRabbitAgent> Animals=>animals;
-        public int PendingCount {get{int count=0;if(queues!=null)foreach(var queue in queues)count+=queue.Count;return count;}}
+        public int PendingCount=>arrivals?.Count??0;
         public int SubmissionCount {get;private set;}
         public bool IsDrawing=>Drawing&&Drawing.Visible;
-        public bool IsReady=>queues!=null&&!startupSplash;
+        public bool IsReady=>arrivals!=null&&!startupSplash;
         readonly List<ParkRabbitAgent> animals=new List<ParkRabbitAgent>();
         ParkRabbitAgent fadingAnimal;
         float fadeRemaining;
-        Queue<Submission>[] queues;
+        List<Submission> arrivals;
+        int nextEntrance;
         Vector3[] pathPoints;
         int[] pathTriangles;
         float lawnHeight;
-        float defaultFogStart,defaultFogEnd;
+        float defaultFogStart,defaultFogEnd,defaultFarClip;
         ParkDuneTerrain duneTerrain;
         Vector2 pondCenter,pondRadii;
         Rect[] walkObstacles;
@@ -39,8 +40,10 @@ namespace PeacePark
         bool parkUsesMsaa;
         internal ParkToast Toast {get;private set;}
         GUIStyle title,button;
-        Texture2D venueTriangle,settingsIcon,cameraIcon;
+        Texture2D venueTriangle,settingsIcon,cameraIcon,distanceGuideIcon;
         bool menuCollapsed;
+        Texture2D pressedHand;
+        bool cursorPressed;
         float menuVisibility=1;
         int dialogClosedFrame=-1;
         readonly DrawingSkin skin=new DrawingSkin();
@@ -49,8 +52,9 @@ namespace PeacePark
         ParkWelcome welcome;
         PoriSplash startupSplash;
         ParkDialogs dialogs;
+        ParkDistanceGuide distanceGuide;
         enum View { ModeSelection, Park, Drawing }
-        enum Dialog { None, Connection, Settings, Venues }
+        enum Dialog { None, Connection, Settings, Venues, DistanceGuide }
         View view;
         Dialog dialog;
         internal ParkLanPanel Lan => lan;
@@ -59,12 +63,14 @@ namespace PeacePark
         internal bool IsConnecting=>dialog==Dialog.Connection;
         internal bool IsSettingsOpen=>dialog==Dialog.Settings;
         internal bool IsVenuePickerOpen=>dialog==Dialog.Venues;
+        internal bool IsDistanceGuideOpen=>dialog==Dialog.DistanceGuide;
         internal int VenueIndex {get;private set;}
         internal bool CanChooseVenue=>IsViewingPark&&lan.IsHosting&&Venues!=null&&Venues.Length>1;
         internal bool IsViewingPark=>view==View.Park;
         sealed class Submission
         {
             public int Id;
+            public int PreferredHouse;
             public AnimalKind Kind;
             public byte[] Front,Back;
             public bool Raw;
@@ -85,6 +91,7 @@ namespace PeacePark
             parkCamera=OrbitCamera?OrbitCamera.GetComponent<Camera>():Camera.main;
             if(parkCamera)
             {
+                defaultFarClip=parkCamera.farClipPlane;
                 parkLayers=parkCamera.cullingMask;
                 parkUsesMsaa=parkCamera.allowMSAA;
             }
@@ -97,7 +104,7 @@ namespace PeacePark
                 ReadPath(path?path.GetComponent<MeshFilter>():null);
                 if(Houses==null||Houses.Length==0)Houses=FindObjectsByType<ParkHouse>(FindObjectsSortMode.None);
             }
-            queues=NewQueues(Houses.Length);
+            arrivals=new List<Submission>();
             animalRoot=new GameObject("Painted friends").transform;
             Drawing.Applied+=OnApplied;
             if(OrbitCamera)OrbitCamera.ShowControls=false;
@@ -110,10 +117,14 @@ namespace PeacePark
             dialogObject.transform.SetParent(transform,false);
             dialogs=dialogObject.AddComponent<ParkDialogs>();
             dialogs.Build(this);
+            var guideObject=new GameObject("Step Back Reminder",typeof(RectTransform));
+            guideObject.transform.SetParent(transform,false);
+            distanceGuide=guideObject.AddComponent<ParkDistanceGuide>();
+            distanceGuide.Build(this);
             var toastObject=new GameObject("Park Notifications",typeof(RectTransform));
             toastObject.transform.SetParent(transform,false);
             Toast=toastObject.AddComponent<ParkToast>();
-            Toast.Build(dialogs.ToastBackground);
+            Toast.Build(dialogs.ToastBackground,this);
             Drawing.Toast=Toast;
             RabbitCharacter.ConfigurePaintShader(RabbitPaintShader);
             SetView(View.ModeSelection);
@@ -156,6 +167,14 @@ namespace PeacePark
         {
             themeName=venue.Name;Houses=venue.Houses;Fountain=venue.Fountain;
             Slide=venue.Slide;
+            Trampoline=venue.Trampoline;
+            Seesaw=venue.Seesaw;
+            Roundabout=venue.Roundabout;
+            Train=venue.Train;
+            Wheel=venue.Wheel;
+            Carousel=venue.Carousel;
+            ForestRides=venue.ForestRides;
+            SandSled=venue.SandSled;
             WalkArea=venue.WalkArea;lawnHeight=venue.LawnHeight;
             duneTerrain=venue.DuneTerrain;
             pondCenter=venue.PondCenter;pondRadii=venue.PondRadii;
@@ -169,6 +188,14 @@ namespace PeacePark
             if(IsViewingPark)music.PlayVenue(themeName);
         }
         internal ParkSlide Slide {get;private set;}
+        internal ParkTrampoline Trampoline {get;private set;}
+        internal ParkSeesaw Seesaw {get;private set;}
+        internal ParkRoundaboutRide Roundabout {get;private set;}
+        internal ParkElephantTrain Train {get;private set;}
+        internal ParkThemeParkWheel Wheel {get;private set;}
+        internal ParkCarouselRide Carousel {get;private set;}
+        internal ParkForestRide[] ForestRides {get;private set;}
+        internal ParkSandSled SandSled {get;private set;}
         internal void OpenVenuePicker()
         {
             if(CanChooseVenue)SetDialog(Dialog.Venues);
@@ -186,9 +213,7 @@ namespace PeacePark
             var previous=Venues[VenueIndex];
             var next=Venues[index];
             var entrances=new ParkHouse[next.Houses.Length];
-            var waiting=new List<(int House,Submission Entry)>();
-            for(int i=0;i<queues.Length;i++)
-                foreach(var entry in queues[i])waiting.Add((Mathf.Min(i,entrances.Length-1),entry));
+            foreach(var entry in arrivals)entry.PreferredHouse=Mathf.Min(entry.PreferredHouse,entrances.Length-1);
             var paused=new List<ParkRabbitAgent>();
             foreach(var animal in animals)
             {
@@ -198,16 +223,17 @@ namespace PeacePark
                 else
                 {
                     paused.Add(animal);
-                    waiting.Add((slot,new Submission{Id=animal.Id,WaitingAgent=animal}));
+                    arrivals.Add(new Submission{Id=animal.Id,PreferredHouse=slot,WaitingAgent=animal});
                     animal.gameObject.SetActive(false);
                 }
             }
             foreach(var animal in paused)animals.Remove(animal);
             for(int i=0;i<entrances.Length;i++)next.Houses[i].ContinueFrom(entrances[i]);
-            queues=NewQueues(entrances.Length);
-            waiting.Sort((a,b)=>a.Entry.Id.CompareTo(b.Entry.Id));
-            foreach(var item in waiting)queues[item.House].Enqueue(item.Entry);
+            arrivals.Sort((a,b)=>a.Id.CompareTo(b.Id));
+            nextEntrance=0;
             previous.Root.SetActive(false);
+            if(parkCamera)
+                parkCamera.farClipPlane=next.FarClipDistance>0?next.FarClipDistance:defaultFarClip;
             VenueIndex=index;
             next.Root.SetActive(true);
             ApplyVenue(next);
@@ -217,12 +243,6 @@ namespace PeacePark
                 animal.ChangeVenue(Houses[slot],slot);
             }
             Toast.Clear();
-        }
-        static Queue<Submission>[] NewQueues(int count)
-        {
-            var result=new Queue<Submission>[count];
-            for(int i=0;i<count;i++)result[i]=new Queue<Submission>();
-            return result;
         }
         public float SurfaceHeight(Vector3 position)
         {
@@ -240,23 +260,21 @@ namespace PeacePark
         }
         public bool TrySubmit(int animal,byte[] front,byte[] back,int preferredHouse=-1)
         {
-            if(!AnimalKinds.IsValid(animal)||queues==null||queues.Length==0||front==null||back==null||front.Length==0||back.Length==0)return false;
+            if(!AnimalKinds.IsValid(animal)||arrivals==null||Houses.Length==0||front==null||back==null||front.Length==0||back.Length==0)return false;
             return Enqueue((AnimalKind)animal,(byte[])front.Clone(),(byte[])back.Clone(),preferredHouse,false);
         }
         internal byte SubmitLan(AnimalKind kind,byte[] front,byte[] back)
         {
-            if(!IsReady||queues.Length==0)return ParkLan.Busy;
+            if(!IsReady||Houses.Length==0)return ParkLan.Busy;
             int waiting=PendingCount;
             if(waiting>=8)return ParkLan.Busy;
             return Enqueue(kind,front,back,-1,true)?ParkLan.Accepted:ParkLan.Busy;
         }
         bool Enqueue(AnimalKind kind,byte[] front,byte[] back,int preferredHouse,bool raw)
         {
-            int house=preferredHouse>=0?preferredHouse:Random.Range(0,Houses.Length);
-            if(house>=queues.Length)return false;
-            var submission=new Submission{Id=++SubmissionCount,Kind=kind,Front=front,Back=back,Raw=raw};
-            queues[house].Enqueue(submission);
-            Toast.Show(ParkLanguage.Arrival(Houses[house].DisplayName,kind));
+            if(preferredHouse>=Houses.Length)return false;
+            arrivals.Add(new Submission{Id=++SubmissionCount,PreferredHouse=preferredHouse,Kind=kind,Front=front,Back=back,Raw=raw});
+            if(!raw)Toast.Show("친구가 곧 나와요!");
             return true;
         }
         void OnApplied(int animal,byte[] front,byte[] back)
@@ -273,19 +291,38 @@ namespace PeacePark
         }
         internal bool ChooseHostMode()
         {
-            if(!IsReady||!IsSelectingMode||IsConnecting||!lan.StartHost())return false;
+            if(!IsReady||!IsSelectingMode||IsConnecting||welcome.IsChoosingVenue)return false;
+            if(Venues==null||Venues.Length==0)return EnterHostedVenue(-1);
+            Toast.Clear();
+            welcome.ShowVenueChoices(true);
+            return true;
+        }
+        internal bool ChooseStartingVenue(int index)
+        {
+            if(!IsReady||!IsSelectingMode||IsConnecting||!welcome.IsChoosingVenue||
+                index<0||index>=Venues.Length)return false;
+            return EnterHostedVenue(index);
+        }
+        bool EnterHostedVenue(int index)
+        {
+            if(!lan.StartHost())return false;
+            if(index>=0)ChangeVenue(index);
             ShowPark();
             return true;
         }
         internal void ChooseDrawingMode()
         {
-            if(!IsReady||!IsSelectingMode||IsConnecting)return;
+            if(!IsReady||!IsSelectingMode||IsConnecting||welcome.IsChoosingVenue)return;
             Toast.Clear();
             SetDialog(Dialog.Connection);
         }
         internal void OpenSettings()
         {
             if(IsViewingPark)SetDialog(Dialog.Settings);
+        }
+        internal void OpenDistanceGuide()
+        {
+            if(IsViewingPark)SetDialog(Dialog.DistanceGuide);
         }
         internal float MusicVolume=>music.Volume;
         internal void SetMusicVolume(float volume)
@@ -306,7 +343,14 @@ namespace PeacePark
             dialog=next;
             welcome.SetModalOpen(IsConnecting);
             dialogs.Show(IsConnecting,IsSettingsOpen,IsVenuePickerOpen);
+            distanceGuide.gameObject.SetActive(IsDistanceGuideOpen);
             if(OrbitCamera)OrbitCamera.InputEnabled=IsViewingPark&&next==Dialog.None;
+            if(parkCamera)
+            {
+                bool showScene=IsViewingPark&&!IsDistanceGuideOpen;
+                parkCamera.cullingMask=showScene?parkLayers:0;
+                parkCamera.allowMSAA=showScene&&parkUsesMsaa;
+            }
         }
         internal void ReturnToModeSelection()
         {
@@ -316,7 +360,11 @@ namespace PeacePark
         }
         void SetView(View next)
         {
-            if(next!=View.Park&&OrbitCamera)OrbitCamera.CancelAnimalFollow(true);
+            if(next!=View.Park&&OrbitCamera)
+            {
+                OrbitCamera.LeaveTrainView();
+                OrbitCamera.CancelAnimalFollow(true);
+            }
             view=next;
             CloseDialog();
             welcome.SetVisible(next==View.ModeSelection);
@@ -325,9 +373,6 @@ namespace PeacePark
             bool showPark=next==View.Park;
             if(showPark)music.PlayVenue(themeName);
             else music.FadeOut();
-            if(!parkCamera)return;
-            parkCamera.cullingMask=showPark?parkLayers:0;
-            parkCamera.allowMSAA=showPark&&parkUsesMsaa;
         }
         void LeaveDrawing()
         {
@@ -360,6 +405,8 @@ namespace PeacePark
         }
         void Update()
         {
+            if(!Application.isMobilePlatform)
+                SetCursorPressed(Application.isFocused&&Input.mousePresent&&Input.GetMouseButton(0));
             menuVisibility=Mathf.MoveTowards(menuVisibility,menuCollapsed?0:1,Time.unscaledDeltaTime*6);
             lan?.Update();
             music?.Advance(Time.unscaledDeltaTime);
@@ -367,6 +414,8 @@ namespace PeacePark
             {
                 if(IsDrawing)LeaveDrawing();
                 else if(dialog!=Dialog.None)CloseDialog();
+                else if(IsSelectingMode&&welcome.IsChoosingVenue)welcome.ShowVenueChoices(false);
+                else if(OrbitCamera)OrbitCamera.LeaveTrainView();
             }
             if(!ManualSimulation&&(IsViewingPark||(IsDrawing&&!lan.IsJoined)))Advance(Time.deltaTime);
         }
@@ -374,39 +423,76 @@ namespace PeacePark
         {
             if(IsViewingPark)music?.PlayVenue(themeName);
         }
-        void OnDisable()=>music?.Stop();
+        void SetCursorPressed(bool pressed)
+        {
+            if(cursorPressed==pressed)return;
+            cursorPressed=pressed;
+            if(pressed&&!pressedHand)pressedHand=Resources.Load<Texture2D>("Cursors/ChildHandPressed");
+            // A null texture restores the pointing hand configured in Player Settings.
+            Cursor.SetCursor(pressed?pressedHand:null,pressed?new Vector2(2,2):Vector2.zero,CursorMode.Auto);
+        }
+        void OnApplicationFocus(bool focused){if(!focused)SetCursorPressed(false);}
+        void OnDisable()
+        {
+            SetCursorPressed(false);
+            music?.Stop();
+        }
         void OnApplicationPause(bool paused)
         {
             if(paused&&IsSettingsOpen)music.SaveVolume();
         }
         public void Advance(float seconds)
         {
-            if(queues==null||seconds<=0)return;
+            if(arrivals==null||seconds<=0)return;
             int steps=Mathf.CeilToInt(seconds/.05f);float dt=seconds/steps;
             for(int step=0;step<steps;step++)
             {
                 AdvanceFade(dt);
-                for(int i=0;i<Houses.Length;i++)
-                {
-                    Houses[i].Advance(dt);
-                    if(queues[i].Count==0||Houses[i].IsBusy)continue;
-                    if(animals.Count>=AnimalLimit)
-                    {
-                        BeginOldestFade();
-                        continue;
-                    }
-                    if(!Houses[i].TryReserve())continue;
-                    var submission=queues[i].Dequeue();
-                    if(submission.WaitingAgent)
-                    {
-                        submission.WaitingAgent.RestartEmergence(Houses[i],i);
-                        animals.Add(submission.WaitingAgent);
-                        continue;
-                    }
-                    var go=new GameObject("Painted "+submission.Kind+" "+submission.Id);go.transform.SetParent(animalRoot,false);
-                    var agent=go.AddComponent<ParkRabbitAgent>();agent.Initialize(this,Houses[i],i,submission.Id,submission.Front,submission.Back,submission.Raw,submission.Kind);animals.Add(agent);
-                }
+                foreach(var house in Houses)house.Advance(dt);
+                SpawnWaitingAnimals();
                 foreach(var animal in animals)animal.Advance(dt);
+                if(Wheel&&Wheel.isActiveAndEnabled)Wheel.Advance(dt);
+                if(Train&&Train.isActiveAndEnabled)Train.Advance(dt);
+                if(Carousel&&Carousel.isActiveAndEnabled)Carousel.Advance(dt);
+                if(Trampoline&&Trampoline.isActiveAndEnabled)Trampoline.Advance(dt);
+                if(Seesaw&&Seesaw.isActiveAndEnabled)Seesaw.Advance(dt);
+                if(Roundabout&&Roundabout.isActiveAndEnabled)Roundabout.Advance(dt);
+                if(SandSled&&SandSled.isActiveAndEnabled)SandSled.Advance(dt);
+                if(ForestRides!=null)
+                    foreach(var ride in ForestRides)
+                        if(ride&&ride.isActiveAndEnabled)ride.Advance(dt);
+            }
+        }
+        void SpawnWaitingAnimals()
+        {
+            int firstEntrance=nextEntrance;
+            for(int offset=0;offset<Houses.Length&&arrivals.Count>0;offset++)
+            {
+                int index=(firstEntrance+offset)%Houses.Length;
+                var house=Houses[index];
+                if(!house.CanReserve)continue;
+                int waiting=arrivals.FindIndex(entry=>entry.PreferredHouse<0||entry.PreferredHouse==index);
+                if(waiting<0)continue;
+                if(animals.Count>=AnimalLimit)
+                {
+                    BeginOldestFade();
+                    return;
+                }
+                if(!house.TryReserve())continue;
+                var submission=arrivals[waiting];
+                arrivals.RemoveAt(waiting);
+                nextEntrance=(index+1)%Houses.Length;
+                var agent=submission.WaitingAgent;
+                if(agent)agent.RestartEmergence(house,index);
+                else
+                {
+                    var go=new GameObject("Painted "+submission.Kind+" "+submission.Id);
+                    go.transform.SetParent(animalRoot,false);
+                    agent=go.AddComponent<ParkRabbitAgent>();
+                    agent.Initialize(this,house,index,submission.Id,submission.Front,submission.Back,submission.Raw,submission.Kind);
+                    Toast.Show(ParkLanguage.Arrival(house.DisplayName,submission.Kind));
+                }
+                animals.Add(agent);
             }
         }
         void BeginOldestFade()
@@ -441,6 +527,7 @@ namespace PeacePark
             venueTriangle=CreateVenueTriangle(title.normal.textColor);
             settingsIcon=CreateSettingsIcon();
             cameraIcon=Resources.Load<Texture2D>("CameraViewReset");
+            distanceGuideIcon=ParkDistanceGuide.CreateToolbarIcon();
         }
         void OnGUI()
         {
@@ -468,6 +555,7 @@ namespace PeacePark
                 menuCollapsed?new Rect(0,0,1,1):new Rect(0,1,1,-1));
             if(GUI.Button(new Rect(width-80,0,80,82),new GUIContent("",ParkLanguage.Text(menuCollapsed?"메뉴 펼치기":"메뉴 접기")),GUIStyle.none))
                 menuCollapsed=!menuCollapsed;
+            DrawAnimalActions(width,area.height/scale);
             GUI.matrix=old;
         }
         static float HudScale(Rect area)=>Mathf.Min(area.height/900f,area.width/665f);
@@ -475,13 +563,16 @@ namespace PeacePark
         {
             var area=Screen.safeArea;
             float scale=HudScale(area);
+            if(ActionButtonsContain(screenPoint,area,scale))return true;
             if(screenPoint.y<area.yMax-84*scale)return false;
             return menuVisibility>0 || screenPoint.x>=area.xMax-80*scale;
         }
         void DrawMenu(float width)
         {
             string themeLabel=ParkLanguage.Text(ThemeName);
-            float themeWidth=Mathf.Min(width-465,Mathf.Max(125,title.CalcSize(new GUIContent(themeLabel)).x+42));
+            float drawingWidth=Mathf.Clamp(width-495,170,222);
+            float drawingLeft=width-298-drawingWidth;
+            float themeWidth=Mathf.Min(drawingLeft-15,Mathf.Max(125,title.CalcSize(new GUIContent(themeLabel)).x+42));
             var place=new Rect(8,18,themeWidth,60);
             if(CanChooseVenue)
             {
@@ -490,7 +581,8 @@ namespace PeacePark
                     GUI.DrawTexture(new Rect(place.xMax-30,place.center.y-5,14,10),venueTriangle);
             }
             else GUI.Label(place,themeLabel,title);
-            if(HudButton(new Rect(width-450,18,222,60),"동물 색칠하기",true))ShowDrawing();
+            if(HudButton(new Rect(drawingLeft,18,drawingWidth,60),"동물 색칠하기",true))ShowDrawing();
+            if(IconButton(new Rect(width-286,18,60,60),distanceGuideIcon,43,ParkDistanceGuide.ToolbarHint))OpenDistanceGuide();
             if(IconButton(new Rect(width-216,18,60,60),cameraIcon,48,"카메라 초기화")&&OrbitCamera)OrbitCamera.ResetView();
             if(IconButton(new Rect(width-146,18,60,60),settingsIcon,34,"설정"))OpenSettings();
         }
@@ -555,6 +647,7 @@ namespace PeacePark
             if(Drawing)Drawing.Applied-=OnApplied;
             if(venueTriangle)Destroy(venueTriangle);
             if(settingsIcon)Destroy(settingsIcon);
+            if(distanceGuideIcon)Destroy(distanceGuideIcon);
             skin.Dispose();
         }
     }

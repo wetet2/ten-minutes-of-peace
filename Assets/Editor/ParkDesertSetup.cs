@@ -68,18 +68,28 @@ namespace PeacePark.Editor
                 Place(Rocks[i % Rocks.Length], new Vector2(x, 39 + (i % 3) * 3), 1.5f + (i % 4) * .50f, 26 + i * 38);
             }
             ParkOasisSetup.Create(root, obstacles);
+            var sled = ParkSandSledSetup.Create(root, sand);
+            var sledBase = ParkSandSled.PickupPoint;
+            obstacles.Add(Rect.MinMaxRect(sledBase.x - 1.28f, sledBase.z - 1.28f, sledBase.x + 1.28f, sledBase.z + 1.28f));
 
             return new ParkVenue {
-                Name = "사막", Root = root.gameObject, DuneTerrain = terrain,
+                Name = "사막", Root = root.gameObject, DuneTerrain = terrain, SandSled = sled,
                 Houses = new[] { DuneEntrance(root, terrain, -11.8f, 24f), DuneEntrance(root, terrain, 11.3f, 24.6f) },
-                WalkArea = Rect.MinMaxRect(-25, -18, 25, 17.5f), WalkObstacles = obstacles.ToArray(),
-                PondCenter = ParkDuneTerrain.OasisCenter, PondRadii = ParkDuneTerrain.OasisRadii * 1.25f + Vector2.one * .22f,
-                Focus = new Vector3(0, 2.6f, 3.5f), Distance = 54, MaxDistance = 72, Pitch = 31,
+                WalkArea = Rect.MinMaxRect(-31, -19.5f, 25, 17.5f), WalkObstacles = obstacles.ToArray(),
+                PondCenter = ParkDuneTerrain.OasisCenter,
+                PondRadii = ParkDuneTerrain.OasisRadii * ParkDuneTerrain.OasisBankRadius + Vector2.one * .22f,
+                Focus = new Vector3(-6.7f, 4.2f, 5.3f), Distance = 62, MaxDistance = 81, Pitch = 31,
+                CameraPanLimits = new Vector2(35, 30),
                 Sky = new Color32(240, 213, 172, 255)
             };
 
             void Place(string name, Vector2 point, float height, float yaw)
             {
+                var fromOasis = point - ParkDuneTerrain.OasisCenter;
+                var radii = ParkDuneTerrain.OasisRadii;
+                const float bank = ParkDuneTerrain.OasisBankRadius;
+                if (new Vector2(fromOasis.x / radii.x, fromOasis.y / radii.y).sqrMagnitude < bank * bank) return;
+                if (ParkSandSled.InCourseCorridor(point, height >= .65f ? 2.35f : 1.60f)) return;
                 if (!loadedProps.TryGetValue(name, out var filter)) return;
                 var renderer = filter.GetComponent<MeshRenderer>();
                 var mesh = filter.sharedMesh;
@@ -104,7 +114,7 @@ namespace PeacePark.Editor
             var entrance = Group("Dune crossing", root, Vector3.zero).gameObject.AddComponent<ParkHouse>();
             entrance.DisplayName = "모래언덕";
             entrance.DoorDuration = .1f;
-            entrance.ExitSeconds = 9.6f;
+            entrance.ExitSeconds = 5.3f;
             entrance.ExitTerrain = terrain;
             entrance.Inside = Point("Behind the dune", crestZ + 8.5f);
             entrance.Threshold = Point("Dune crest", crestZ);
@@ -146,7 +156,7 @@ namespace PeacePark.Editor
         static List<float> SandCoordinates()
         {
             const int edgeCells = 100;
-            const int oasisCells = 8;
+            const int oasisCells = 12;
             const float spacing = .8f;
             var coordinates = new List<float>();
             for (int cell = -edgeCells; cell <= edgeCells; cell++)

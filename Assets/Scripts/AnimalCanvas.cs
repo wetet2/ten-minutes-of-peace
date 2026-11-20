@@ -86,10 +86,10 @@ namespace PeacePark
         {
             var lines=new Color32[Width*Height];
             var pixels=Paint.GetRawTextureData<Color32>();
+            var kind=(AnimalKind)animal;
             for(int y=0;y<Height;y++)for(int x=0;x<Width;x++)
             {
                 float u=(float)x/Width,v=(float)y/Height;
-                // Shared upright toddler-like body for all five species.
                 // Big-headed animation-character proportion. The body stays anchored
                 // to the floor while becoming shorter and narrower; the head grows
                 // around its own visual centre so facial details keep their ratios.
@@ -100,6 +100,11 @@ namespace PeacePark
                 // in the silhouette instead of being outlined across the chest.
                 if(animal==(int)AnimalKind.Giraffe&&bodyY>.32f)
                     bodyY=.32f+(bodyY-.32f)/.75f;
+                if(kind==AnimalKind.Hippo)
+                {
+                    float belly=SmoothBand(bodyY,.14f,.275f,.29f,.397f);
+                    bodyX=.5f+(bodyX-.5f)/(1+.24f*belly);
+                }
                 float shape=BodyDistance(bodyX,bodyY)*Mathf.Min(bodyScaleX,bodyScaleY);
                 float headX=.5f+(u-.5f)/headScale;
                 // Scale around a high pivot so tall ears and horns grow downward
@@ -108,7 +113,7 @@ namespace PeacePark
                 AnimalHead.Sample(animal,headX,headY,back,out float head,out Color feature);
                 head*=headScale;
                 shape=Merge(shape,head,.009f);
-                float tail=back?TailDistance((AnimalKind)animal,bodyX,bodyY):1f;
+                float tail=back?TailDistance(kind,bodyX,bodyY):1f;
                 if(back&&animal!=(int)AnimalKind.Rabbit)
                     shape=Merge(shape,tail*Mathf.Min(bodyScaleX,bodyScaleY),.006f);
                 int index=y*Width+x;mask[index]=(byte)(shape<0?1:0);
@@ -129,9 +134,10 @@ namespace PeacePark
                 {
                     float tailLineWidth=.0034f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.55f,.70f,bodyX));
                     detail|=bodyY>CrocodileTailCenterY(bodyX)&&Mathf.Abs(tail)<tailLineWidth;
+                    detail|=CrocodileBackDetails(bodyX,bodyY);
                 }
                 else if(back&&animal==(int)AnimalKind.Hippo)
-                    detail|=bodyY<.315f&&Mathf.Abs(tail)<.0029f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.315f,.290f,bodyY));
+                    detail|=bodyY<.338f&&Mathf.Abs(tail)<.0029f*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.338f,.307f,bodyY));
                 else detail|=back&&Mathf.Abs(tail)<.003f;
                 if(mask[index]!=0)
                 {
@@ -168,14 +174,21 @@ namespace PeacePark
                     float tailY=TriceratopsTailCenterY(tailX);
                     return new Vector2(x-tailX,y-tailY).magnitude-Mathf.Lerp(.070f,.009f,tailT);
                 case AnimalKind.Crocodile:
-                    float crocTailX=Mathf.Clamp(x,.50f,.93f);
-                    float crocTailT=Mathf.InverseLerp(.50f,.93f,crocTailX);
-                    return new Vector2(x-crocTailX,y-CrocodileTailCenterY(crocTailX)).magnitude-
-                        Mathf.Lerp(.072f,.010f,crocTailT);
+                    float crocTailX=Mathf.Clamp(x,.50f,.89f);
+                    float tailShape=new Vector2(x-crocTailX,y-CrocodileTailCenterY(crocTailX)).magnitude-CrocodileTailWidth(crocTailX);
+                    if(x>.62f&&y>.20f&&y<.34f)
+                    {
+                        for(int i=0;i<4;i++)
+                        {
+                            float ridgeX=.68f+i*.049f;
+                            float ridgeY=CrocodileTailCenterY(ridgeX)+CrocodileTailWidth(ridgeX)*.80f;
+                            tailShape=Merge(tailShape,E(x,y,ridgeX,ridgeY,.020f-i*.002f,.022f-i*.003f),.005f);
+                        }
+                    }
+                    return tailShape;
                 case AnimalKind.Hippo:
-                    float hippoTailX=.506f+(.302f-y)*.30f;
-                    return Merge(E(x,y,hippoTailX,.302f,.016f,.041f),
-                        E(x,y,.520f,.265f,.013f,.016f),.009f);
+                    return Merge(Capsule(x,y,new Vector2(.503f,.339f),new Vector2(.523f,.283f),.017f),
+                        E(x,y,.526f,.277f,.015f,.015f),.007f);
                 case AnimalKind.Elephant:
                     return Merge(Capsule(x,y,new Vector2(.50f,.35f),new Vector2(.55f,.205f),.010f),
                         E(x,y,.55f,.201f,.016f,.024f),.004f);
@@ -189,8 +202,31 @@ namespace PeacePark
         }
         static float CrocodileTailCenterY(float x)
         {
-            float t=Mathf.InverseLerp(.50f,.93f,x);
-            return .324f-.135f*Mathf.Sin(t*Mathf.PI*.83f);
+            float t=Mathf.InverseLerp(.50f,.89f,x);
+            return Mathf.Lerp(.342f,.282f,t)-.105f*Mathf.Sin(t*Mathf.PI);
+        }
+        static float CrocodileTailWidth(float x)=>Mathf.Lerp(.069f,.012f,Mathf.InverseLerp(.50f,.89f,x));
+        static float SmoothBand(float value,float lower,float fullStart,float fullEnd,float upper) =>
+            Mathf.SmoothStep(0,1,Mathf.InverseLerp(lower,fullStart,value))*
+            Mathf.SmoothStep(0,1,Mathf.InverseLerp(upper,fullEnd,value));
+        static bool CrocodileBackDetails(float x,float y)
+        {
+            if(y>.365f&&y<.581f&&Mathf.Abs(x-.5f)<.16f)
+            {
+                float side=Mathf.Abs(x-.5f);
+                for(int row=0;row<3;row++)
+                    if(Mathf.Abs(E(side,y,.084f,.413f+row*.066f,.031f,.025f))<.0029f)return true;
+            }
+            if(x>.60f&&x<.883f&&Mathf.Abs(y-CrocodileTailCenterY(x))<CrocodileTailWidth(x)*.92f)
+            {
+                for(int stripe=0;stripe<4;stripe++)
+                {
+                    float lineX=.66f+stripe*.060f;
+                    float bend=(y-CrocodileTailCenterY(lineX))*.26f;
+                    if(Mathf.Abs(x-lineX+bend)<.0025f)return true;
+                }
+            }
+            return false;
         }
         static float TriceratopsTailCenterY(float x)
         {

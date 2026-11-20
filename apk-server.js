@@ -19,7 +19,7 @@ const pageAssets = new Map([
   ['/media/playground.png', ['Assets/Textures/Venues/KidsCafe.png', 'image/png']],
   ['/media/desert.jpg', ['Assets/Textures/Venues/Desert.jpg', 'image/jpeg']],
   ['/media/christmas.jpg', ['Assets/Textures/Venues/Christmas.jpg', 'image/jpeg']],
-  ['/media/beach.jpg', ['Assets/Textures/Venues/Beach.jpg', 'image/jpeg']],
+  ['/media/theme-park.jpg', ['Assets/Textures/Venues/ThemePark.jpg', 'image/jpeg']],
   ['/fonts/game-title.otf', ['Assets/Resources/Fonts/BaskinRobbins-Bold.otf', 'font/otf']],
   ['/fonts/comic-relief-regular.ttf', ['Assets/Resources/Fonts/ComicRelief-Regular.ttf', 'font/ttf']],
   ['/fonts/comic-relief-bold.ttf', ['Assets/Resources/Fonts/ComicRelief-Bold.ttf', 'font/ttf']],

@@ -10,14 +10,16 @@ namespace PeacePark
         CanvasGroup group;
         Text label;
         Canvas canvas;
+        ParkPlayground park;
         float expires;
         Rect bounds;
         readonly DrawingSkin skin=new DrawingSkin();
         GUIStyle style;
         internal string Message=>Time.unscaledTime<expires?label.text:null;
 
-        internal void Build(Sprite background)
+        internal void Build(Sprite background,ParkPlayground owner)
         {
+            park=owner;
             canvas=gameObject.AddComponent<Canvas>();
             canvas.renderMode=RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder=20;
@@ -84,7 +86,7 @@ namespace PeacePark
             float height=Mathf.Max(56*scale,label.preferredHeight+20*scale);
             float rise=Mathf.SmoothStep(0,1,(Duration-remaining)/Enter);
             group.alpha=rise*Mathf.SmoothStep(0,1,remaining/Exit);
-            float bottom=Screen.height-safe.yMin;
+            float bottom=Screen.height-safe.yMin-park.ActionToastSpace*scale;
             float top=Mathf.Lerp(bottom,bottom-height-22*scale,rise);
             bounds=new Rect(safe.center.x-width/2,top,width,height);
             ParkWelcome.Place(banner,bounds);

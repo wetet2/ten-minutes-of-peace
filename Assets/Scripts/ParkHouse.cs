@@ -21,10 +21,8 @@ namespace PeacePark
         public ParkSlide EntranceSlide;
         public Transform EntrancePole;
         public float ExitSeconds;
-        public bool BushEntrance;
-        internal const float BushPeekSeconds=.75f, BushLookSeconds=2.1f, BushWalkSeconds=2.8f;
         internal const float PoleEntrySeconds=1.20f,PoleDescentSeconds=2.45f,PoleReleaseSeconds=.4f,PoleWalkSeconds=1.15f;
-        internal float ExitDuration=>BushEntrance?BushPeekSeconds+BushLookSeconds+BushWalkSeconds:EntranceSlide?
+        internal float ExitDuration=>EntranceSlide?
             ParkSlide.EntrySeconds+ParkSlide.DescentSeconds+ParkSlide.StandSeconds+ParkSlide.ExitWalkSeconds:
             EntrancePole?PoleEntrySeconds+PoleDescentSeconds+PoleReleaseSeconds+PoleWalkSeconds:
             ExitSeconds>0?ExitSeconds:3.75f;
@@ -38,10 +36,11 @@ namespace PeacePark
         MaterialPropertyBlock entranceLightProperties;
         static readonly int LightStrength=Shader.PropertyToID("_Strength");
         internal int LastDepartureDirection {get;set;}=-1;
+        internal bool CanReserve=>!IsBusy&&(!EntranceSlide||!EntranceSlide.isActiveAndEnabled||EntranceSlide.Available);
 
         public bool TryReserve()
         {
-            if(IsBusy||(EntranceSlide&&EntranceSlide.isActiveAndEnabled&&!EntranceSlide.Available))return false;
+            if(!CanReserve)return false;
             IsBusy=true;opening=true;OpenCount++;
             if(EntranceBell)bellTime=1.35f;
             if(EntranceChime)EntranceChime.Play();

@@ -5,6 +5,7 @@ namespace PeacePark
     public sealed partial class ParkCamera : MonoBehaviour
     {
         public const float MinimumDistance=3.5f;
+        const float ResetDuration=.9f;
         public Vector3 focus = new Vector3(0, 1, 0);
         public float distance = 30;
         public float yaw = 0;
@@ -20,6 +21,9 @@ namespace PeacePark
         float initialDistance, initialYaw, initialPitch;
         float maxDistance=48,panX=15,panZ=12;
         float closeFocusHeight;
+        Vector3 resetStartFocus, resetStartAngles;
+        float resetStartDistance, resetElapsed=-1f;
+        bool IsResetting=>resetElapsed>=0f;
 
         void Awake()
         {
@@ -63,12 +67,14 @@ namespace PeacePark
         }
         void Orbit(Vector2 delta)
         {
+            if(seatedTrain)return;
             InterruptReturn();
             yaw+=delta.x*.25f;
             pitch=Mathf.Clamp(pitch-delta.y*.2f,12,82);
         }
         void Pan(Vector2 delta)
         {
+            if(seatedTrain)return;
             InterruptReturn();
             var heading=Quaternion.Euler(0,yaw,0);
             var movement=heading*new Vector3(delta.x,0,delta.y)*distance*.0013f;
@@ -157,7 +163,23 @@ namespace PeacePark
         }
         void Apply()
         {
-            transform.rotation = Quaternion.Euler(pitch, yaw, 0);
+            if(seatedTrain)
+            {
+                var seat=seatedTrain.RideView(locomotiveView);
+                transform.SetPositionAndRotation(seat.position,seat.rotation);
+                return;
+            }
+            float roll=0f;
+            if(IsResetting)
+            {
+                float eased=Mathf.SmoothStep(0f,1f,resetElapsed/ResetDuration);
+                focus=Vector3.Lerp(resetStartFocus,NormalFocus(initialFocus,initialDistance),eased);
+                distance=Mathf.Lerp(resetStartDistance,initialDistance,eased);
+                yaw=Mathf.LerpAngle(resetStartAngles.y,initialYaw,eased);
+                pitch=Mathf.LerpAngle(resetStartAngles.x,initialPitch,eased);
+                roll=Mathf.LerpAngle(resetStartAngles.z,0f,eased);
+            }
+            transform.rotation = Quaternion.Euler(pitch, yaw, roll);
             var target=following||returning||freeAim?focus:NormalFocus(focus,distance);
             transform.position = target - transform.forward * distance;
         }
@@ -173,6 +195,19 @@ namespace PeacePark
         }
         internal void ResetView()
         {
+            if(IsResetting)return;
+            resetStartAngles=transform.eulerAngles;
+            resetStartDistance=distance;
+            resetStartFocus=transform.position+transform.forward*distance;
+            seatedTrain=null;
+            CancelAnimalFollow(false);
+            freeAim=true;
+            resetElapsed=0f;
+            Apply();
+        }
+        void RestoreDefaultView()
+        {
+            seatedTrain=null;
             CancelAnimalFollow(false);
             focus = initialFocus;
             distance = initialDistance;
@@ -187,7 +222,7 @@ namespace PeacePark
             panX=Mathf.Max(15,Mathf.Max(venue.WalkArea.width*.46f,venue.CameraPanLimits.x));
             panZ=Mathf.Max(12,Mathf.Max(venue.WalkArea.height*.46f,venue.CameraPanLimits.y));
             closeFocusHeight=venue.CloseFocusHeight;
-            ResetView();
+            RestoreDefaultView();
         }
         void OnGUI()
         {

@@ -9,53 +9,69 @@ namespace PeacePark
         const string LegacyEnabledPreference = "PeacePark.MusicEnabled";
         const float MaxSourceVolume = .42f;
         const float FadeSeconds = 1.4f;
-        readonly GameObject owner;
-        readonly Dictionary<string, AudioSource> tracks = new Dictionary<string, AudioSource>();
-        AudioSource current;
+        static readonly Dictionary<string, string[]> Playlists = new Dictionary<string, string[]>
+        {
+            { "공원", new[] { "Garden", "DaisyPath" } },
+            { "숲", new[] { "Forest", "FernWhistle" } },
+            { "놀이터", new[] { "Hopscotch", "PocketKites", "Playground" } },
+            { "사막", new[] { "Desert", "SandstoneSteps" } },
+            { "시계탑 광장", new[] { "Christmas", "SnowglobeBells" } },
+            { "놀이공원", new[] { "CarouselWaltz", "RibbonParade", "LanternWheel" } }
+        };
+        readonly Dictionary<string, int> nextTrack = new Dictionary<string, int>();
+        readonly AudioSource[] sources = new AudioSource[2];
+        int current;
+        string activeVenue;
+        double expectedEnd;
         internal float Volume { get; private set; } = Mathf.Clamp01(
             PlayerPrefs.GetFloat(VolumePreference, PlayerPrefs.GetInt(LegacyEnabledPreference, 1) == 0 ? 0f : 1f));
 
         internal ParkMusic(GameObject owner)
         {
-            this.owner = owner;
+            for (int i = 0; i < sources.Length; i++)
+            {
+                var source = owner.AddComponent<AudioSource>();
+                source.playOnAwake = false;
+                source.spatialBlend = 0f;
+                source.loop = false;
+                source.volume = 0f;
+                sources[i] = source;
+            }
         }
 
         internal void PlayVenue(string venue, bool fadeIn = true)
         {
-            if (Volume == 0f) return;
-
-            string track = venue switch
+            if (venue == activeVenue) return;
+            if (venue == null || !Playlists.ContainsKey(venue) || Volume == 0f)
             {
-                "공원" => "Garden",
-                "숲" => "Forest",
-                "놀이터" => "Playground",
-                "사막" => "Desert",
-                "시계탑 광장" => "Christmas",
-                "해변가" => "Beach",
-                _ => null
-            };
-            current = null;
-            if (track == null) return;
-
-            if (!tracks.TryGetValue(track, out current))
-            {
-                var clip = Resources.Load<AudioClip>($"Music/{track}");
-                if (!clip) return;
-
-                current = owner.AddComponent<AudioSource>();
-                current.playOnAwake = false;
-                current.spatialBlend = 0f;
-                current.loop = true;
-                current.volume = 0f;
-                current.clip = clip;
-                tracks.Add(track, current);
+                FadeOut();
+                return;
             }
+            if (!sources[current].isActiveAndEnabled) return;
+            activeVenue = venue;
+            PlayNext(fadeIn);
+        }
 
-            if (!current.isPlaying)
+        void PlayNext(bool fadeIn)
+        {
+            var playlist = Playlists[activeVenue];
+            nextTrack.TryGetValue(activeVenue, out int index);
+            for (int attempt = 0; attempt < playlist.Length; attempt++)
             {
-                if (!fadeIn) current.volume = MaxSourceVolume * Volume;
-                current.Play();
+                var clip = Resources.Load<AudioClip>("Music/" + playlist[index]);
+                index = (index + 1) % playlist.Length;
+                if (!clip) continue;
+                nextTrack[activeVenue] = index;
+                current = 1 - current;
+                var source = sources[current];
+                source.Stop();
+                source.clip = clip;
+                source.volume = fadeIn ? 0f : MaxSourceVolume * Volume;
+                source.Play();
+                expectedEnd = AudioSettings.dspTime + clip.length;
+                return;
             }
+            FadeOut();
         }
 
         internal void SetVolume(float volume)
@@ -65,9 +81,22 @@ namespace PeacePark
             if (Volume == previous) return;
 
             PlayerPrefs.SetFloat(VolumePreference, Volume);
-            if (Volume == 0f) Stop();
+            if (Volume == 0f)
+            {
+                if (activeVenue == null) { Stop(); return; }
+                sources[current].Pause();
+                sources[current].volume = 0f;
+                Clear(sources[1 - current]);
+            }
+            else if (previous == 0f && activeVenue != null)
+            {
+                var source = sources[current];
+                expectedEnd = AudioSettings.dspTime + source.clip.length - (double)source.timeSamples / source.clip.frequency;
+                source.volume = MaxSourceVolume * Volume;
+                source.UnPause();
+            }
             else if (previous > 0f)
-                foreach (var source in tracks.Values)
+                foreach (var source in sources)
                     source.volume *= Volume / previous;
         }
 
@@ -75,28 +104,46 @@ namespace PeacePark
 
         internal void FadeOut()
         {
-            current = null;
+            activeVenue = null;
+            if (Volume == 0f) Stop();
         }
 
         internal void Advance(float seconds)
         {
-            float gain = MaxSourceVolume * Volume;
-            foreach (var source in tracks.Values)
+            if (Volume == 0f || AudioListener.pause) return;
+            if (activeVenue != null)
             {
-                float target = source == current ? gain : 0f;
+                var playing = sources[current];
+                var clip = playing.clip;
+                // Sample position avoids drift on a long visit. The DSP clock also handles
+                // a short frame stall that carries us past the clip's final sample.
+                if (playing.isPlaying
+                    ? clip.samples - playing.timeSamples <= clip.frequency * FadeSeconds
+                    : AudioSettings.dspTime >= expectedEnd)
+                    PlayNext(true);
+            }
+            float gain = MaxSourceVolume * Volume;
+            for (int i = 0; i < sources.Length; i++)
+            {
+                var source = sources[i];
+                if (!source.clip) continue;
+                float target = activeVenue != null && i == current ? gain : 0f;
                 source.volume = Mathf.MoveTowards(source.volume, target, gain * seconds / FadeSeconds);
-                if (target == 0f && source.volume == 0f && source.isPlaying) source.Stop();
+                if (target == 0f && source.volume == 0f) Clear(source);
             }
         }
 
         internal void Stop()
         {
-            current = null;
-            foreach (var source in tracks.Values)
-            {
-                source.Stop();
-                source.volume = 0f;
-            }
+            activeVenue = null;
+            foreach (var source in sources) Clear(source);
+        }
+
+        static void Clear(AudioSource source)
+        {
+            source.Stop();
+            source.volume = 0f;
+            source.clip = null;
         }
     }
 }

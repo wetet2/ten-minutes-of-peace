@@ -4,13 +4,13 @@ const venues = [
   ['놀이터', 'playground.png', '신나는 등장', '미끄럼틀을 타거나 봉을 타고 내려와 반갑게 손을 흔들어요.'],
   ['사막', 'desert.jpg', '모래 언덕 너머', '모래 언덕 너머로 나타난 친구와 시원한 오아시스를 둘러봐요.'],
   ['시계탑 광장', 'christmas.jpg', '눈 내린 마을', '커다란 시계가 있는 성당, 따뜻한 창문 불빛과 산책하는 사슴을 만나요.'],
-  ['해변가', 'beach.jpg', '무인도로 떠나요', '수풀에서 빼꼼! 폭포가 흐르는 섬에서 조개, 게, 헤엄치는 물고기를 찾아요.'],
+  ['놀이공원', 'theme-park.jpg', '놀이기구를 타요', '코끼리 기차, 대관람차, 회전목마를 타고 놀이공원을 둘러봐요.'],
 ];
 const animalNames = ['곰', '호랑이', '토끼', '개구리', '기린', '코끼리', '트리케라톱스', '악어', '하마', '고릴라'];
 const english = {
   "십분의 평화": "Ten Minutes of Peace",
   "우리 가족의 색칠 놀이터": "A coloring playground for the whole family",
-  "아이가 색칠한 동물이 살아 움직여요. 공원, 숲, 놀이터, 사막, 시계탑 광장, 해변가까지 여섯 놀이 공간에서 함께하는 가족용 색칠 게임. Android APK 다운로드.": "Bring your child’s colorful animals to life. Explore six play spaces together: Park, Forest, Playground, Desert, Clock Tower Square and Beach. Download the Android APK.",
+  "아이가 색칠한 동물이 살아 움직여요. 공원, 숲, 놀이터, 사막, 시계탑 광장, 놀이공원까지 여섯 놀이 공간에서 함께하는 가족용 색칠 게임. Android APK 다운로드.": "Bring your child’s colorful animals to life. Explore six play spaces together: Park, Forest, Playground, Desert, Clock Tower Square and Amusement Park. Download the Android APK.",
   "본문으로 건너뛰기": "Skip to content",
   "십분의 평화 홈": "Ten Minutes of Peace home",
   "페이지 메뉴": "Page navigation",
@@ -24,10 +24,10 @@ const english = {
   "· Android용": "· For Android",
   "어디에서 놀아볼까요?": "Where shall we play?",
   "오늘의 여행지": "Today’s destination",
-  "야자수와 큰 폭포, 투명한 바다가 있는 해변가 실제 게임 화면": "In-game Beach view with palm trees, a tall waterfall and clear ocean water",
-  "파도 소리를 따라": "Follow the sound of the waves",
-  "우리만의 무인도, 해변가": "Beach: our own island escape",
-  "해변가 소개 보기": "Explore the Beach",
+  "코끼리 기차와 대관람차가 있는 놀이공원 실제 게임 화면": "In-game Amusement Park view with the Elephant Train and Ferris wheel",
+  "오늘은 놀이기구 타는 날": "A day of rides",
+  "친구들과 함께, 놀이공원": "A trip to the Amusement Park",
+  "놀이공원 소개 보기": "Explore the Amusement Park",
   "색칠한 친구가": "Your colorful friend",
   "빼꼼, 인사해요!": "pops out to say hello!",
   "게임 소개": "About the game",
@@ -39,7 +39,7 @@ const english = {
   "가족의 친구들이 한자리에": "All your family’s friends in one place",
   "작은 친구들의 넓은 세상": "A big world for little friends",
   "오늘은 어디에서 놀까요?": "Where shall we play today?",
-  "햇살 가득한 해변부터 눈 내린 광장까지.": "From sunny beaches to snowy squares.",
+  "꽃이 피는 공원부터 눈 내린 광장까지.": "From flower-filled parks to snowy squares.",
   "좋아하는 장소에서 새로운 인사를 만나요.": "Discover a new hello in your favorite place.",
   "게임 화면 크게 보기 (새 탭)": "View game screenshot (new tab)",
   "실제 게임 화면": "in-game screenshot",
@@ -48,7 +48,7 @@ const english = {
   "정답 없는 색칠 시간": "No wrong colors here",
   "내가 칠한 색 그대로,": "Your colors,",
   "살아 움직이는 친구들.": "brought to life.",
-  "앞모습과 뒷모습을 색칠하고 놀이 공간에 보내세요. 문을 열고, 언덕을 넘고, 수풀에서 고개를 내밀며 등장한 친구들이 손을 흔들고 산책해요.": "Color the front and back of your animal, then send it to the play space. Friends open doors, cross dunes or peek out of bushes before waving hello and taking a stroll.",
+  "앞모습과 뒷모습을 색칠하고 놀이 공간에 보내세요. 문을 열고, 언덕을 넘고, 미끄럼틀을 타고 등장한 친구들이 손을 흔들고 산책해요.": "Color the front and back of your animal, then send it to the play space. Friends open doors, cross dunes or come down the slide before waving hello and taking a stroll.",
   "색칠할 수 있는 동물 10종": "10 animals to color",
   "색칠은 각자, 즐거움은 함께": "Your own colors. A shared adventure.",
   "온 가족의 친구들을 한자리에.": "Bring the whole family’s friends together.",
@@ -112,10 +112,10 @@ const englishVenues = [
     "Discover a grand clock cathedral, warmly lit windows and wandering deer."
   ],
   [
-    "Beach",
-    "beach.jpg",
-    "An island escape",
-    "Peekaboo from the bushes! Find shells, crabs and swimming fish on an island with a waterfall."
+    "Amusement Park",
+    "theme-park.jpg",
+    "A day of rides",
+    "Explore the amusement park on the Elephant Train, Ferris wheel or carousel."
   ]
 ];
 const englishAnimals = ["Bear", "Tiger", "Rabbit", "Frog", "Giraffe", "Elephant", "Triceratops", "Crocodile", "Hippo", "Gorilla"];
@@ -145,7 +145,7 @@ function page(version, downloadPath, language = 'en') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f8f6ed">
   <title>${t("십분의 평화")} · ${t("우리 가족의 색칠 놀이터")}</title>
-  <meta name="description" content="${t("아이가 색칠한 동물이 살아 움직여요. 공원, 숲, 놀이터, 사막, 시계탑 광장, 해변가까지 여섯 놀이 공간에서 함께하는 가족용 색칠 게임. Android APK 다운로드.")}">
+  <meta name="description" content="${t("아이가 색칠한 동물이 살아 움직여요. 공원, 숲, 놀이터, 사막, 시계탑 광장, 놀이공원까지 여섯 놀이 공간에서 함께하는 가족용 색칠 게임. Android APK 다운로드.")}">
   <link rel="icon" href="/media/icon.png">
   <link rel="stylesheet" href="/download.css">
 </head>
@@ -167,8 +167,8 @@ function page(version, downloadPath, language = 'en') {
       </div>
       <figure class="hero-scene">
         <div class="scene-top"><span>${t("오늘의 여행지")}</span><span>06 / 06</span></div>
-        <img src="/media/beach.jpg" alt="${t("야자수와 큰 폭포, 투명한 바다가 있는 해변가 실제 게임 화면")}" width="824" height="464" fetchpriority="high">
-        <figcaption><div><span class="eyebrow">${t("파도 소리를 따라")}</span><h2>${t("우리만의 무인도, 해변가")}</h2></div><a href="#place-6" aria-label="${t("해변가 소개 보기")}">↗</a></figcaption>
+        <img src="/media/theme-park.jpg" alt="${t("코끼리 기차와 대관람차가 있는 놀이공원 실제 게임 화면")}" width="824" height="464" fetchpriority="high">
+        <figcaption><div><span class="eyebrow">${t("오늘은 놀이기구 타는 날")}</span><h2>${t("친구들과 함께, 놀이공원")}</h2></div><a href="#place-6" aria-label="${t("놀이공원 소개 보기")}">↗</a></figcaption>
         <span class="scene-sticker">${t("색칠한 친구가")}<br>${t("빼꼼, 인사해요!")}</span>
       </figure>
     </section>
@@ -178,7 +178,7 @@ function page(version, downloadPath, language = 'en') {
       <p><strong>${t("같은 Wi-Fi로 함께")}</strong><span>${t("가족의 친구들이 한자리에")}</span></p>
     </section>
     <section class="places-section" id="places" aria-labelledby="places-title"><div class="wrap">
-      <div class="section-heading"><div><p class="eyebrow">${t("작은 친구들의 넓은 세상")}</p><h2 id="places-title">${t("오늘은 어디에서 놀까요?")}</h2></div><p>${t("햇살 가득한 해변부터 눈 내린 광장까지.")}<br>${t("좋아하는 장소에서 새로운 인사를 만나요.")}</p></div>
+      <div class="section-heading"><div><p class="eyebrow">${t("작은 친구들의 넓은 세상")}</p><h2 id="places-title">${t("오늘은 어디에서 놀까요?")}</h2></div><p>${t("꽃이 피는 공원부터 눈 내린 광장까지.")}<br>${t("좋아하는 장소에서 새로운 인사를 만나요.")}</p></div>
       <div class="places">${places.map(([name, image, tag, description], i) => `
         <article class="place" id="place-${i + 1}">
           <a class="place-image" href="/media/${image}" target="_blank" rel="noopener" aria-label="${name} ${t("게임 화면 크게 보기 (새 탭)")}"><img src="/media/${image}" alt="${name} ${t("실제 게임 화면")}" width="824" height="464" loading="lazy"><span class="place-number">0${i + 1}</span><span class="image-expand" aria-hidden="true">↗</span></a>
@@ -189,7 +189,7 @@ function page(version, downloadPath, language = 'en') {
     </div></section>
     <section class="friends wrap" aria-labelledby="friends-title">
       <div class="friends-art" aria-hidden="true"><span class="art-circle"></span><img class="friend-bear" src="/media/bear.png" alt="" loading="lazy"><img class="friend-frog" src="/media/frog.png" alt="" loading="lazy"><img class="friend-elephant" src="/media/elephant.png" alt="" loading="lazy"><span class="art-caption">${t("무슨 색이든 좋아!")}</span></div>
-      <div class="friends-copy"><p class="eyebrow">${t("정답 없는 색칠 시간")}</p><h2 id="friends-title">${t("내가 칠한 색 그대로,")}<br>${t("살아 움직이는 친구들.")}</h2><p class="section-description">${t("앞모습과 뒷모습을 색칠하고 놀이 공간에 보내세요. 문을 열고, 언덕을 넘고, 수풀에서 고개를 내밀며 등장한 친구들이 손을 흔들고 산책해요.")}</p><ul class="animal-list" aria-label="${t("색칠할 수 있는 동물 10종")}">${animals.map(name => `<li>${name}</li>`).join('')}</ul></div>
+      <div class="friends-copy"><p class="eyebrow">${t("정답 없는 색칠 시간")}</p><h2 id="friends-title">${t("내가 칠한 색 그대로,")}<br>${t("살아 움직이는 친구들.")}</h2><p class="section-description">${t("앞모습과 뒷모습을 색칠하고 놀이 공간에 보내세요. 문을 열고, 언덕을 넘고, 미끄럼틀을 타고 등장한 친구들이 손을 흔들고 산책해요.")}</p><ul class="animal-list" aria-label="${t("색칠할 수 있는 동물 10종")}">${animals.map(name => `<li>${name}</li>`).join('')}</ul></div>
     </section>
     <section class="together-section" id="together" aria-labelledby="together-title"><div class="wrap">
       <div class="section-heading"><div><p class="eyebrow">${t("색칠은 각자, 즐거움은 함께")}</p><h2 id="together-title">${t("온 가족의 친구들을 한자리에.")}</h2></div><p>${t("같은 Wi-Fi에 연결한 기기로")}<br>${t("하나의 놀이 공간을 함께 채워보세요.")}</p></div>

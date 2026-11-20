@@ -11,6 +11,8 @@ namespace PeacePark
         ParkPlayground park;
         Camera viewCamera;
         ParkRabbitAgent followTarget,tappedAnimal;
+        ParkElephantTrain seatedTrain,tappedTrain;
+        bool locomotiveView,tappedLocomotive;
         bool following,returning,pointerActive,pointerDragged;
         bool freeAim,savedFreeAim;
         int pointerId;
@@ -20,7 +22,7 @@ namespace PeacePark
         Vector3 savedFocus;
         float savedDistance,savedYaw,savedPitch;
         readonly Dictionary<Mesh,Bounds> headBounds=new Dictionary<Mesh,Bounds>();
-        internal ParkRabbitAgent FollowTarget=>followTarget;
+        internal ParkRabbitAgent FollowTarget=>seatedTrain?null:followTarget;
         internal bool IsReturning=>returning;
         float ZoomDistance=>following?followDistance:distance;
 
@@ -34,36 +36,60 @@ namespace PeacePark
             CancelAnimalTap();
             if(!InputEnabled||!CanStartPointer(position,id))return;
             pointerActive=true;pointerId=id;pointerStart=position;pointerStartedAt=Time.unscaledTime;
-            tappedAnimal=AnimalAt(position);
+            if(seatedTrain||!park||!park.IsViewingPark||!viewCamera)return;
+            var train=park.Train;
+            var ray=viewCamera.ScreenPointToRay(position);
+            float trainDepth=train&&train.isActiveAndEnabled?train.PickDepth(ray,out tappedLocomotive):float.PositiveInfinity;
+            tappedAnimal=AnimalAt(position,trainDepth);
+            if(!tappedAnimal&&!float.IsPositiveInfinity(trainDepth)&&
+                !Physics.Raycast(ray,Mathf.Max(0,trainDepth-.03f),~0,QueryTriggerInteraction.Ignore))
+                tappedTrain=train;
         }
         internal bool MoveAnimalTap(Vector2 position)
         {
             if(!pointerActive)return false;
             float tolerance=Mathf.Clamp(Screen.height*.012f,10,24);
             if((position-pointerStart).sqrMagnitude>tolerance*tolerance)
-            {pointerDragged=true;tappedAnimal=null;}
+            {pointerDragged=true;tappedAnimal=null;tappedTrain=null;}
             return pointerDragged;
         }
         internal void EndAnimalTap(Vector2 position,int id)
         {
             MoveAnimalTap(position);
             var animal=tappedAnimal;
+            var train=tappedTrain;
+            bool locomotive=tappedLocomotive;
             bool tap=pointerActive&&!pointerDragged&&id==pointerId&&Time.unscaledTime-pointerStartedAt<=.45f&&
                 CanStartPointer(position,id)&&InputEnabled;
             CancelAnimalTap();
-            if(tap&&animal)ToggleAnimalFollow(animal);
+            if(!tap)return;
+            if(seatedTrain)LeaveTrainView();
+            else if(animal)ToggleAnimalFollow(animal);
+            else if(train&&train.isActiveAndEnabled&&park&&park.Train==train)
+            {
+                seatedTrain=train;
+                locomotiveView=locomotive;
+                Apply();
+            }
         }
-        internal void CancelAnimalTap(){pointerActive=false;pointerDragged=false;tappedAnimal=null;}
+        internal void CancelAnimalTap(){pointerActive=false;pointerDragged=false;tappedAnimal=null;tappedTrain=null;tappedLocomotive=false;}
 
-        internal ParkRabbitAgent AnimalAt(Vector2 position)
+        internal void LeaveTrainView()
+        {
+            if(!seatedTrain)return;
+            seatedTrain=null;
+            Apply();
+        }
+
+        internal ParkRabbitAgent AnimalAt(Vector2 position,float maxDepth=float.PositiveInfinity)
         {
             if(!park||!viewCamera||!park.IsViewingPark)return null;
             var ray=viewCamera.ScreenPointToRay(position);
-            ParkRabbitAgent nearest=null;float nearestDistance=float.PositiveInfinity;
+            ParkRabbitAgent nearest=null;float nearestDistance=maxDepth;
             foreach(var animal in park.Animals)
             {
                 if(!park.CanFollowAnimal(animal))continue;
-                // A peeking head leans out of the bushes before the body follows.
+                // During arrivals the animated head and torso can shift away from the animal's root.
                 var headPose=animal.transform.localToWorldMatrix;
                 var bodyPose=headPose;
                 if(animal.State==ParkRabbitState.WalkingOut)
@@ -84,7 +110,7 @@ namespace PeacePark
                 !obstacle.transform.IsChildOf(nearest.transform))return null;
             return nearest;
         }
-        static float HitDepth(Ray ray,Bounds bounds,Matrix4x4 pose)
+        internal static float HitDepth(Ray ray,Bounds bounds,Matrix4x4 pose)
         {
             var inverse=pose.inverse;
             var local=new Ray(inverse.MultiplyPoint3x4(ray.origin),inverse.MultiplyVector(ray.direction).normalized);
@@ -113,6 +139,7 @@ namespace PeacePark
         internal void ToggleAnimalFollow(ParkRabbitAgent animal)
         {
             if(!park||!park.CanFollowAnimal(animal))return;
+            if(IsResetting)InterruptReturn();
             if(following&&followTarget==animal){ReleaseAnimalFollow();return;}
             if(!following&&!returning)
             {
@@ -136,6 +163,7 @@ namespace PeacePark
         }
         internal void CancelAnimalFollow(bool restore)
         {
+            resetElapsed=-1f;
             if(restore&&(following||returning))
             {focus=savedFocus;distance=savedDistance;yaw=savedYaw;pitch=savedPitch;freeAim=savedFreeAim;}
             else if(!restore)freeAim=false;
@@ -144,25 +172,40 @@ namespace PeacePark
         }
         void InterruptReturn()
         {
-            if(!returning)return;
+            if(!returning&&!IsResetting)return;
             // Keep the exact displayed aim if a manual gesture interrupts the return.
+            resetElapsed=-1f;
             returning=false;freeAim=true;focusVelocity=Vector3.zero;zoomVelocity=yawVelocity=pitchVelocity=0;
         }
         void ZoomTo(float value)
         {
+            if(seatedTrain)return;
             InterruptReturn();
             value=Mathf.Clamp(value,MinimumDistance,maxDistance);
             if(following)followDistance=value;else distance=value;
         }
         void LateUpdate()
         {
-            if(!InputEnabled)return;
+            if(seatedTrain)
+            {
+                if(seatedTrain.isActiveAndEnabled)Apply();
+                else LeaveTrainView();
+                return;
+            }
+            if(!InputEnabled&&!IsResetting)return;
             AdvanceAnimalFollow(Time.unscaledDeltaTime);
         }
         internal void AdvanceAnimalFollow(float dt)
         {
             if(following&&(!followTarget||!park.CanFollowAnimal(followTarget)))ReleaseAnimalFollow();
             if(dt<=0)return;
+            if(IsResetting)
+            {
+                resetElapsed+=dt;
+                if(resetElapsed>=ResetDuration)RestoreDefaultView();
+                else Apply();
+                return;
+            }
             if(following)
             {
                 focus=Vector3.SmoothDamp(focus,AnimalFocus(),ref focusVelocity,.32f,Mathf.Infinity,dt);

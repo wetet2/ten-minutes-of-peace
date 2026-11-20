@@ -30,7 +30,7 @@ namespace PeacePark.Editor
             float left=-RoomWidth/2,back=RoomDepth/2;
             ParkCafeTerrace.Create(root,RoomWidth,RoomDepth,cream,box,sphere);
 
-            CreateRoundabout(root,sphere,cylinder,mint,yellow);
+            var roundabout=CreateRoundabout(root,sphere,cylinder,mint,yellow);
             var slide=CreateSlide(root,box,sphere,cylinder,mint,blue,yellow,coral);
             var gate=CreateLookout("Spiral slide lookout",slide.transform,new Vector3(SpiralRadius,TowerHeight,.80f),
                 box,sphere,mint,wood,shade,plaster,yellow);
@@ -39,20 +39,21 @@ namespace PeacePark.Editor
             gate.EntranceSlide=slide;
             slide.Entrance=gate;
             var pole=CreatePoleTower(root,box,sphere,cylinder,blue,wood,shade,plaster,yellow,coral,mint);
-            CreateTrampoline(root,box,sphere,cylinder,mint,coral,blue);
-            CreateSeesaw(root,box,sphere,cylinder,mint,coral,blue,yellow);
+            var trampoline=CreateTrampoline(root,box,sphere,cylinder,mint,coral,blue);
+            var seesaw=CreateSeesaw(root,box,sphere,cylinder,mint,coral,blue,yellow);
             ClearMaterials(root);
             root.gameObject.AddComponent<ParkPlaygroundAtmosphere>();
             return new ParkVenue
             {
                 Name="놀이터",Root=root.gameObject,Houses=new[]{gate,pole},LawnHeight=0,Slide=slide,
+                Trampoline=trampoline,Seesaw=seesaw,Roundabout=roundabout,
                 WalkArea=Rect.MinMaxRect(left-.40f,-back-.75f,-left+.40f,back-.90f),
                 PondCenter=RoundaboutCenter,PondRadii=Vector2.one*(RoundaboutRadius+.35f),
                 WalkObstacles=new[]{
                     Rect.MinMaxRect(TowerPosition.x-3.7f,TowerPosition.z-2.75f,TowerPosition.x+3.72f,TowerPosition.z+3.72f),
                     Rect.MinMaxRect(TowerPosition.x+3.72f,TowerPosition.z-2.45f,TowerPosition.x+6.57f,TowerPosition.z+3.74f),
                     Rect.MinMaxRect(PolePosition.x-1.93f,PolePosition.z-2.13f,PolePosition.x+1.93f,PolePosition.z+2.65f),
-                    Rect.MinMaxRect(TrampolinePosition.x-2.35f,TrampolinePosition.z-2.75f,TrampolinePosition.x+2.35f,TrampolinePosition.z+2.35f),
+                    Rect.MinMaxRect(TrampolinePosition.x-2.35f,TrampolinePosition.z-2.75f,TrampolinePosition.x+2.35f,TrampolinePosition.z+2.75f),
                     Rect.MinMaxRect(SeesawPosition.x-2.64f,SeesawPosition.z-1.19f,SeesawPosition.x+2.64f,SeesawPosition.z+1.19f)},
                 Focus=new Vector3(.25f,1.55f,1.8f),Distance=41f,Yaw=-8,Pitch=34,
                 FogStart=95,FogEnd=210,Sky=new Color32(170,208,231,255)
@@ -195,7 +196,7 @@ namespace PeacePark.Editor
             return mesh;
         }
 
-        static void CreateRoundabout(Transform root,Mesh sphere,Mesh cylinder,Material mint,Material yellow)
+        static ParkRoundaboutRide CreateRoundabout(Transform root,Mesh sphere,Mesh cylinder,Material mint,Material yellow)
         {
             var roundabout=Group("Roundabout",root,new Vector3(RoundaboutCenter.x,0,RoundaboutCenter.y));
             var teal=Paint("Roundabout teal","#559A89");
@@ -203,18 +204,21 @@ namespace PeacePark.Editor
                 new Vector3(1.78f,.14f,1.78f),teal);
 
             var platform=Group("Rotating platform",roundabout,Vector3.zero);
-            platform.gameObject.AddComponent<ParkRoundaboutSpin>();
+            var spin=platform.gameObject.AddComponent<ParkRoundaboutSpin>();
+            const float deckHeight=.53f,railRadius=1.30f;
             var pieces=new Pieces();
             float diameter=2*RoundaboutRadius;
             pieces.Add(cylinder,teal,new Vector3(0,.29f,0),new Vector3(diameter-.12f,.13f,diameter-.12f));
-            pieces.Add(cylinder,mint,new Vector3(0,.43f,0),new Vector3(diameter,.10f,diameter));
+            pieces.Add(cylinder,mint,new Vector3(0,deckHeight-.10f,0),new Vector3(diameter,.10f,diameter));
             pieces.Add(cylinder,teal,new Vector3(0,.54f,0),new Vector3(.66f,.025f,.66f));
-            for(int i=0;i<3;i++)
+            var handles=new Transform[3];
+            for(int i=0;i<handles.Length;i++)
             {
                 var angle=Quaternion.Euler(0,20f+i*120f,0);
-                var left=angle*new Vector3(-.58f,.52f,1.88f);
-                var right=angle*new Vector3(.58f,.52f,1.88f);
+                var left=angle*new Vector3(-.58f,.52f,railRadius);
+                var right=angle*new Vector3(.58f,.52f,railRadius);
                 var rail=Vector3.up*.92f;
+                handles[i]=Group("Handrail grip "+(i+1),platform,(left+right)*.5f+rail);
                 const float tube=.19f;
                 pieces.Beam(cylinder,yellow,left,left+rail,tube);
                 pieces.Beam(cylinder,yellow,right,right+rail,tube);
@@ -225,6 +229,9 @@ namespace PeacePark.Editor
                 pieces.Add(cylinder,teal,right,new Vector3(.31f,.04f,.31f));
             }
             pieces.Build(platform);
+            var ride=roundabout.gameObject.AddComponent<ParkRoundaboutRide>();
+            ride.Configure(spin,handles,RoundaboutRadius,deckHeight);
+            return ride;
         }
 
         const float SpiralRadius=2.55f,TowerHeight=6.1f,RunoutDepth=1.6f;
@@ -360,7 +367,7 @@ namespace PeacePark.Editor
             }
         }
 
-        static void CreateTrampoline(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,Material blue)
+        static ParkTrampoline CreateTrampoline(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,Material blue)
         {
             var trampoline=Group("Trampoline",root,TrampolinePosition);
             var mat=Paint("Trampoline navy mat","#3D5478");
@@ -369,38 +376,41 @@ namespace PeacePark.Editor
             pieces.Add(cylinder,blue,new Vector3(0,.53f,0),new Vector3(4.32f,.13f,4.32f));
             pieces.Add(cylinder,coral,new Vector3(0,.67f,0),new Vector3(4.44f,.10f,4.44f));
             pieces.Add(cylinder,mat,new Vector3(0,.77f,0),new Vector3(3.78f,.019f,3.78f));
-            pieces.Add(box,mint,new Vector3(0,.16f,-2.41f),new Vector3(1.14f,.32f,.66f));
-            pieces.Add(box,blue,new Vector3(0,.34f,-2.13f),new Vector3(1.14f,.37f,.57f));
-
-            const int bays=7,subdivisions=5;
-            const float opening=.27f;
-            for(int bay=0;bay<=bays;bay++)
+            const int subdivisions=5,segments=3*subdivisions;
+            const float opening=.40f;
+            for(int half=0;half<2;half++)
             {
-                float angle=Mathf.Lerp(opening,2*Mathf.PI-opening,bay/(float)bays);
-                var foot=RailPoint(angle,.12f);
-                pieces.Add(cylinder,blue,foot,new Vector3(.28f,.12f,.28f));
-                pieces.Beam(cylinder,mint,foot,RailPoint(angle,2.35f),.128f);
-                pieces.Add(sphere,coral,RailPoint(angle,2.35f),Vector3.one*.24f);
-            }
-
-            for(int i=0;i<bays*subdivisions;i++)
-            {
-                float a=Mathf.Lerp(opening,2*Mathf.PI-opening,i/(float)(bays*subdivisions));
-                float b=Mathf.Lerp(opening,2*Mathf.PI-opening,(i+1)/(float)(bays*subdivisions));
-                if(i%subdivisions!=0)pieces.Beam(cylinder,rope,RailPoint(a,.80f),RailPoint(a,2.30f),.015f);
-                for(int row=0;row<5;row++)
+                int side=half==0?-1:1;
+                pieces.Add(box,mint,new Vector3(0,.16f,side*2.41f),new Vector3(1.48f,.32f,.66f));
+                pieces.Add(box,blue,new Vector3(0,.34f,side*2.13f),new Vector3(1.48f,.37f,.57f));
+                float start=half*Mathf.PI+opening,step=(Mathf.PI-2*opening)/segments;
+                for(int i=0;i<=segments;i++)
                 {
-                    float height=.86f+row*.35f;
-                    pieces.Beam(cylinder,rope,RailPoint(a,height),RailPoint(b,height),.017f);
+                    float a=start+i*step,b=a+step;
+                    if(i%subdivisions==0)
+                    {
+                        var foot=RailPoint(a,.12f);
+                        pieces.Add(cylinder,blue,foot,new Vector3(.28f,.12f,.28f));
+                        pieces.Beam(cylinder,mint,foot,RailPoint(a,2.35f),.128f);
+                        pieces.Add(sphere,coral,RailPoint(a,2.35f),Vector3.one*.24f);
+                    }
+                    else pieces.Beam(cylinder,rope,RailPoint(a,.80f),RailPoint(a,2.30f),.015f);
+                    if(i==segments)break;
+                    for(int row=0;row<5;row++)
+                    {
+                        float height=.86f+row*.35f;
+                        pieces.Beam(cylinder,rope,RailPoint(a,height),RailPoint(b,height),.017f);
+                    }
+                    pieces.Beam(cylinder,mint,RailPoint(a,2.30f),RailPoint(b,2.30f),.075f);
                 }
-                pieces.Beam(cylinder,mint,RailPoint(a,2.30f),RailPoint(b,2.30f),.075f);
             }
             pieces.Build(trampoline);
+            return trampoline.gameObject.AddComponent<ParkTrampoline>();
 
             static Vector3 RailPoint(float angle,float height)=>new Vector3(2.10f*Mathf.Sin(angle),height,-2.10f*Mathf.Cos(angle));
         }
 
-        static void CreateSeesaw(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,
+        static ParkSeesaw CreateSeesaw(Transform root,Mesh box,Mesh sphere,Mesh cylinder,Material mint,Material coral,
             Material blue,Material yellow)
         {
             var seesaw=Group("Seesaw",root,SeesawPosition);
@@ -412,7 +422,6 @@ namespace PeacePark.Editor
             basePieces.Build(seesaw);
 
             var beam=Group("Seesaw plank",seesaw,new Vector3(0,.98f,0));
-            beam.localRotation=Quaternion.Euler(0,0,9);
             var seats=new Pieces();
             seats.Add(box,yellow,Vector3.zero,new Vector3(4.81f,.24f,.45f));
             for(int side=-1;side<=1;side+=2)
@@ -427,6 +436,9 @@ namespace PeacePark.Editor
                     seats.Add(sphere,seat,handle+new Vector3(0,.58f,grip*.26f),Vector3.one*.19f);
             }
             seats.Build(beam);
+            var ride=seesaw.gameObject.AddComponent<ParkSeesaw>();
+            ride.Beam=beam;
+            return ride;
         }
     }
 }
