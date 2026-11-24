@@ -89,33 +89,21 @@ namespace PeacePark
         {
             const int size = 96;
             var icon = new Texture2D(size, size, TextureFormat.RGBA32, false)
-                {name = "Step back reminder icon", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear};
+                {name = "Step back prohibition icon", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear};
             var pixels = new Color32[size * size];
-            var stem = new Vector2(0, -5);
-            var tip = new Vector2(0, -34);
-            var left = new Vector2(-13, -21);
-            var right = new Vector2(13, -21);
             for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {
                 var point = new Vector2(x + .5f - size / 2, y + .5f - size / 2);
-                var edge = new Vector2(Mathf.Abs(point.x) - 26, Mathf.Abs(point.y - 17) - 12);
-                float screen = new Vector2(Mathf.Max(0, edge.x), Mathf.Max(0, edge.y)).magnitude
-                    + Mathf.Min(0, Mathf.Max(edge.x, edge.y)) - 6;
-                float arrow = Mathf.Min(Segment(point, stem, tip), Mathf.Min(Segment(point, left, tip), Segment(point, right, tip)));
-                float opacity = Mathf.Clamp01(3.8f - Mathf.Min(Mathf.Abs(screen), arrow));
-                pixels[y * size + x] = new Color32(80, 62, 47, (byte)Mathf.RoundToInt(opacity * 255));
+                float radius = point.magnitude;
+                float ring = Mathf.Abs(radius - 34) - 3.9f;
+                float slash = Mathf.Max(Mathf.Abs(point.x + point.y) * .7071f - 3.9f, radius - 34);
+                float opacity = Mathf.Clamp01(.5f - Mathf.Min(ring, slash));
+                pixels[y * size + x] = new Color32(214, 49, 49, (byte)Mathf.RoundToInt(opacity * 255));
             }
             icon.SetPixels32(pixels);
             icon.Apply(false, true);
             return icon;
-
-            static float Segment(Vector2 point, Vector2 a, Vector2 b)
-            {
-                var line = b - a;
-                var delta = point - a;
-                return (delta - line * Mathf.Clamp01(Vector2.Dot(delta, line) / line.sqrMagnitude)).magnitude;
-            }
         }
     }
 }

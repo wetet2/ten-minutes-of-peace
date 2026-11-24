@@ -11,11 +11,13 @@ namespace PeacePark
         public static readonly Vector2 SledDuneCrest = new Vector2(-33.8f, 26.8f);
         public static readonly Vector2 SledLanding = new Vector2(-12.4f, -13.15f);
         public static readonly Vector2 SledDescentDirection = (SledLanding - SledDuneCrest).normalized;
+        public static readonly Vector2 SledDescentSide = new Vector2(-SledDescentDirection.y, SledDescentDirection.x);
         public const float SledDuneHeight = 16.4f;
 
         // Center X/Z, footprint radii X/Z, and crest height.
         static readonly (float X, float Z, float Width, float Depth, float Height)[] Dunes = {
-            (-12.4f, 24f, 14.2f, 9.8f, 7f), (11.2f, 24.6f, 14.6f, 10.2f, 6.8f),
+            // Leave enough cover for full-size animals approaching behind the compacted entrance dunes.
+            (-12.4f, 24f, 14.2f, 9.8f, 7.75f), (11.2f, 24.6f, 14.6f, 10.2f, 7.60f),
             (-23f, 31f, 17f, 11f, 4.6f), (24f, 32f, 17f, 12f, 5.1f),
             (-30f, 11f, 10.5f, 16.5f, 3.8f), (29.5f, 7.5f, 11f, 16f, 4.2f),
             (-28f, -12f, 12f, 13.5f, .55f), (29f, -15f, 12f, 15f, 2.9f),
@@ -38,26 +40,45 @@ namespace PeacePark
             var offset = new Vector2(x, z) - SledDuneCrest;
             float along = Vector2.Dot(offset, SledDescentDirection);
             if (along <= -endPadding - endBlend || along >= DescentLength + endPadding + endBlend) return height;
-            float across = Mathf.Abs(offset.x * SledDescentDirection.y - offset.y * SledDescentDirection.x);
-            if (across >= 6.2f) return height;
+            float across = Mathf.Abs(Vector2.Dot(offset, SledDescentSide));
+            float outerWidth = Mathf.Lerp(6.45f, 5.5f, Mathf.InverseLerp(3, 28, along));
+            if (across >= outerWidth) return height;
 
             // Keep the sled lane level across both runners and blend its shoulders into the dune.
-            float width = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(2.1f, 6.2f, across));
+            float width = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(1.85f, outerWidth, across));
             // The whole sled still needs even ground when its center is at either end.
             float beforeStart = Mathf.InverseLerp(-endPadding - endBlend, -endPadding, along);
             float afterFinish = Mathf.InverseLerp(DescentLength + endPadding, DescentLength + endPadding + endBlend, along);
             float ends = Mathf.SmoothStep(0, 1, beforeStart) * (1 - Mathf.SmoothStep(0, 1, afterFinish));
             float grade = Mathf.SmoothStep(CrestHeight, LandingHeight, along / (DescentLength * .75f));
+            if (along < -endPadding)
+            {
+                float rear = along + endPadding;
+                grade -= .16f * rear * rear;
+            }
             return Mathf.Lerp(height, grade, width * ends);
         }
 
         static float NaturalHeight(float x, float z)
         {
             float height = .09f * Mathf.Sin(x * .23f + z * .08f) * Mathf.Sin(z * .29f);
-            float sledAlong = (z - SledDuneCrest.y) / 32.2f;
-            float sledAcross = (x - SledDuneCrest.x + .09f * (z - SledDuneCrest.y)) / 22;
+            var offset = new Vector2(x, z) - SledDuneCrest;
+            float alongCourse = Vector2.Dot(offset, SledDescentDirection);
+            float acrossCourse = Vector2.Dot(offset, SledDescentSide);
+            float sledAlong = alongCourse / (alongCourse < 0 ? 11 : 36);
+            float sledAcross = acrossCourse / 12.2f;
             float sledFootprint = 1 - sledAlong * sledAlong - sledAcross * sledAcross;
             if (sledFootprint > 0) height += SledDuneHeight * Mathf.Pow(sledFootprint, 2.4f);
+            // A compact shoulder screens the bend at the foot of the dune.
+            float shoulderAlong = (alongCourse - 35.5f) / 7.5f;
+            float shoulderAcross = (acrossCourse + 8f) / 4.4f;
+            float shoulder = 1 - shoulderAlong * shoulderAlong - shoulderAcross * shoulderAcross;
+            if (shoulder > 0) height += 7.7f * Mathf.Pow(shoulder, 1.75f);
+            float ridgeAlong = (alongCourse - 25.5f) / 17;
+            float ridgeCenter = Mathf.Lerp(-3.7f, -6.15f, Mathf.InverseLerp(16, 36, alongCourse));
+            float ridgeAcross = (acrossCourse - ridgeCenter) / 2.55f;
+            float ridge = 1 - ridgeAlong * ridgeAlong - ridgeAcross * ridgeAcross;
+            if (ridge > 0) height += 4.6f * Mathf.Pow(ridge, 1.85f);
             foreach (var dune in Dunes)
             {
                 float along = (z - dune.Z) / dune.Depth;

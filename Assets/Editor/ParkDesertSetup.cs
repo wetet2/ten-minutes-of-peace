@@ -9,6 +9,7 @@ namespace PeacePark.Editor
 {
     internal static class ParkDesertSetup
     {
+        const float VenueScale = .80f;
         const string Prefabs = ParkNaturePack.PandazoleFolder + "Prefabs/";
         static readonly string[] Cacti = { "Cactus_37_A", "Cactus_28_A", "Cactus_13_A", "Cactus_22_A" };
         static readonly string[] Rocks = { "HardRock_31", "HardRock_36", "HardRock_41", "HardRock_51", "HardRock_56" };
@@ -34,8 +35,10 @@ namespace PeacePark.Editor
             sand.SetColor("_Shade", new Color(.76f, .48f, .28f));
             sand.SetFloat("_Variation", .043f);
             sand.SetFloat("_GrassDetail", .045f);
-            var ground = ParkGeometry.Place("Continuous sand and dunes", SandMesh(), root, Vector3.zero, Vector3.one, sand);
+            var sandMesh = SandMesh();
+            var ground = ParkGeometry.Place("Continuous sand and dunes", sandMesh, root, Vector3.zero, Vector3.one, sand);
             ground.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            ground.gameObject.AddComponent<MeshCollider>().sharedMesh = sandMesh;
 
             var obstacles = new List<Rect>();
             var scenery = Group("Pandazole desert scenery", root, Vector3.zero);
@@ -69,22 +72,24 @@ namespace PeacePark.Editor
             }
             ParkOasisSetup.Create(root, obstacles);
             var sled = ParkSandSledSetup.Create(root, sand);
+            var camp = ParkDesertCampSetup.Create(root, terrain, obstacles, out var tentEntrance);
             var sledBase = ParkSandSled.PickupPoint;
             obstacles.Add(Rect.MinMaxRect(sledBase.x - 1.28f, sledBase.z - 1.28f, sledBase.x + 1.28f, sledBase.z + 1.28f));
 
-            return new ParkVenue {
-                Name = "사막", Root = root.gameObject, DuneTerrain = terrain, SandSled = sled,
-                Houses = new[] { DuneEntrance(root, terrain, -11.8f, 24f), DuneEntrance(root, terrain, 11.3f, 24.6f) },
+            return ScaleVenue(new ParkVenue {
+                Name = "사막", Root = root.gameObject, DuneTerrain = terrain, SandSled = sled, DesertCamp = camp,
+                Houses = new[] { DuneEntrance(root, terrain, -11.8f, 24f), DuneEntrance(root, terrain, 11.3f, 24.6f), tentEntrance },
                 WalkArea = Rect.MinMaxRect(-31, -19.5f, 25, 17.5f), WalkObstacles = obstacles.ToArray(),
                 PondCenter = ParkDuneTerrain.OasisCenter,
                 PondRadii = ParkDuneTerrain.OasisRadii * ParkDuneTerrain.OasisBankRadius + Vector2.one * .22f,
                 Focus = new Vector3(-6.7f, 4.2f, 5.3f), Distance = 62, MaxDistance = 81, Pitch = 31,
                 CameraPanLimits = new Vector2(35, 30),
                 Sky = new Color32(240, 213, 172, 255)
-            };
+            }, Vector3.one * VenueScale, viewScale: VenueScale);
 
             void Place(string name, Vector2 point, float height, float yaw)
             {
+                if (ParkDesertCampSetup.SceneryClearance.Contains(point)) return;
                 var fromOasis = point - ParkDuneTerrain.OasisCenter;
                 var radii = ParkDuneTerrain.OasisRadii;
                 const float bank = ParkDuneTerrain.OasisBankRadius;

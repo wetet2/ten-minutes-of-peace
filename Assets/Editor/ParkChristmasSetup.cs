@@ -39,18 +39,20 @@ namespace PeacePark.Editor
 
             BuildPaths(root);
             var cathedral = ParkChristmasCathedral.Create(root);
+            var rink=ParkChristmasRinkSetup.Create(root);
 
             var scenery = Group("Evergreens, lanterns and snowdrifts", root, Vector3.zero);
             var pieces = new Pieces();
-            AddFir(pieces,new Vector3(-12.6f,0,-6f),7,true);
-            AddFir(pieces,new Vector3(12.9f,0,-5.8f),6.8f,true);
+            AddFir(pieces,new Vector3(-12.75f,0,-.92f),7,true);
+            AddFir(pieces,new Vector3(12.85f,0,-.80f),6.8f,true);
             foreach(int side in new[] {-1,1})
             {
-                Lantern(pieces,new Vector3(side*3.1f,0,-28.8f));
-                AddFir(pieces,new Vector3(side*13.5f,0,-27.5f),side<0?4.3f:5.1f,false);
+                Lantern(pieces,new Vector3(side*(ParkIceRink.HalfWidth-.55f),0,ParkChristmasRinkSetup.FrontEdge-1.6f));
+                AddFir(pieces,new Vector3(side*(ParkIceRink.HalfWidth+1.85f),0,ParkChristmasRinkSetup.FrontEdge-1.25f),side<0?3.35f:3.6f,false);
             }
-            foreach (var p in new[] { new Vector3(-6.7f,0,-10.3f), new Vector3(6.7f,0,-10.3f),
-                new Vector3(-10.4f,0,-3.2f), new Vector3(11.3f,0,-2.8f), new Vector3(-16.5f,0,2.8f), new Vector3(16.5f,0,3.5f) })
+            var plazaLanterns = new[] { new Vector3(-6.7f,0,-6.28f), new Vector3(6.7f,0,-6.28f),
+                new Vector3(-12f,0,-3.2f), new Vector3(12.1f,0,-2.8f), new Vector3(-16.5f,0,2.8f), new Vector3(16.5f,0,3.5f) };
+            foreach (var p in plazaLanterns)
                 Lantern(pieces, p);
             for (int i = 0; i < 12; i++)
             {
@@ -65,22 +67,28 @@ namespace PeacePark.Editor
             for (int i = 0; i < 13; i++)
             {
                 float side = i % 2 == 0 ? -1 : 1;
-                var p = new Vector3(side * (12.85f + (i % 3) * .45f), -.04f, -9.9f + i * 1.5f);
-                pieces.Add(ball, snow, p, new Vector3(2.1f + i % 4 * .38f, .4f + i % 3 * .10f, 2.4f));
+                var p = new Vector3(side * (12.95f + (i % 3) * .45f), -.04f, -5.98f + i * 1.23f);
+                pieces.Add(ball, snow, p, new Vector3(2.1f + i % 4 * .38f, .4f + i % 3 * .10f, 2.1f));
             }
             pieces.Build(scenery);
             ParkChristmasTown.Create(root);
             BuildHills(root);
             AddSnowfall(root);
-            ParkChristmasDeerSetup.AddDeer(root);
+            var deer = ParkChristmasDeerSetup.AddDeer(root);
+            var obstacles = new List<Rect> {
+                Rect.MinMaxRect(-15.9f, 4.33f, 15.9f, ParkChristmasCathedral.FootprintBack+.4f),
+                Rect.MinMaxRect(-14.8f,-2.85f,-10.58f,1.25f), Rect.MinMaxRect(10.66f,-2.78f,14.90f,1.26f),
+                ParkChristmasRinkSetup.Footprint
+            };
+            foreach (var p in plazaLanterns)
+                if (Mathf.Abs(p.x) < 13) obstacles.Add(new Rect(p.x - .4f, p.z - .4f, .8f, .8f));
 
             return new ParkVenue
             {
-                Name = "시계탑 광장", Root = root.gameObject, Houses = new[] { cathedral }, LawnHeight = .025f,
-                WalkArea = Rect.MinMaxRect(-12, -12.4f, 12, 7.8f),
-                WalkObstacles = new[] { Rect.MinMaxRect(-15.9f, 4.33f, 15.9f, ParkChristmasCathedral.FootprintBack+.4f),
-                    Rect.MinMaxRect(-12.6f, -8.13f, -10.75f, -4.65f),Rect.MinMaxRect(10.95f,-7.9f,14.85f,-3.7f) },
-                Focus = new Vector3(0, 8.95f, 2.75f), Distance = 40, Pitch = 16, Yaw = 13, MaxDistance = 62,
+                Name = "시계탑 광장", Root = root.gameObject, Houses = new[] { cathedral }, Deer = deer, IceRink=rink, LawnHeight = .025f,
+                WalkArea = Rect.MinMaxRect(-12.9f, -7.6f, 12.9f, 7.8f),
+                WalkObstacles = obstacles.ToArray(),
+                Focus = new Vector3(0, 7.6f, -4.8f), Distance = 55, Pitch = 24, Yaw = 4, MaxDistance = 75,
                 FogEnd = 198, Sky = new Color32(116, 115, 181, 255)
             };
         }
@@ -141,10 +149,10 @@ namespace PeacePark.Editor
             var vertices = new Dictionary<Material, List<Vector3>>();
             const float jointDepth = .004f;
             // The main loop sits just above both connections, so only its paving is visible at a junction.
-            AddRing(10.65f, 6.9f, -4.25f, 76, .022f);
+            AddRing(10.65f, 3.90f, -1.77f, 76, .022f);
             AddRing(7.65f, 4.40f, 2.8f, 54, .013f);
             const float approach = .004f;
-            const int aisleRows = 25;
+            const int aisleRows = 16;
             for (int row = 0; row < aisleRows; row++)
             {
                 AddAisleStrip(joint,-1.70f,1.70f,row,row+1,approach);
@@ -204,7 +212,7 @@ namespace PeacePark.Editor
             {
                 float t=row/aisleRows;
                 float bend=-1.85f*Mathf.Sin(t*Mathf.PI)*Mathf.Sin(t*2*Mathf.PI);
-                return new Vector3(x+bend,y,Mathf.Lerp(-15.325f,5.12f,t));
+                return new Vector3(x+bend,y,Mathf.Lerp(ParkChristmasRinkSetup.RearEdge+.25f,5.12f,t));
             }
 
             void AddQuad(Material material, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
@@ -232,26 +240,43 @@ namespace PeacePark.Editor
 
         static void AddSnowfall(Transform root)
         {
-            var flakes = Group("Falling snow", root, new Vector3(0, 15, -3));
+            var flakes = Group("Falling snow", root, new Vector3(0, 24, -8));
             flakes.localRotation = Quaternion.Euler(83, 12, 0);
             var particles = flakes.gameObject.AddComponent<ParticleSystem>();
             var main = particles.main;
             main.loop = true;
             main.prewarm = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(9, 12);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(18, 22);
             main.startSpeed = new ParticleSystem.MinMaxCurve(1.15f, 1.75f);
-            main.startSize = new ParticleSystem.MinMaxCurve(.050f, .125f);
+            main.startSize = new ParticleSystem.MinMaxCurve(.07f, .16f);
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 660;
+            main.maxParticles = 4800;
             var emission = particles.emission;
-            emission.rateOverTime = 54;
+            emission.rateOverTime = 220;
             var shape = particles.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
-            shape.scale = new Vector3(39, 29, .70f);
+            shape.scale = new Vector3(58, 50, .70f);
             var renderer = particles.GetComponent<ParticleSystemRenderer>();
-            renderer.renderMode = ParticleSystemRenderMode.Mesh;
-            renderer.mesh = RoundProfile("Snowflake", 5, new Vector2(.015f,-.35f), new Vector2(.50f,0), new Vector2(.015f,.35f));
-            renderer.sharedMaterial = Glow("Snowflakes", "#FFF6FF");
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.alignment = ParticleSystemRenderSpace.View;
+            renderer.maxParticleSize = .012f;
+            const int textureSize = 32;
+            var texture = new Texture2D(textureSize, textureSize, TextureFormat.RGBA32, false) {
+                name = "Soft round snowflake", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp
+            };
+            var pixels = new Color32[textureSize * textureSize];
+            for (int y = 0; y < textureSize; y++)
+            for (int x = 0; x < textureSize; x++)
+            {
+                var point = new Vector2((x + .5f) / textureSize * 2 - 1, (y + .5f) / textureSize * 2 - 1);
+                byte alpha = (byte)Mathf.RoundToInt((1 - Mathf.SmoothStep(.55f, .95f, point.magnitude)) * 255);
+                pixels[y * textureSize + x] = new Color32(255, 255, 255, alpha);
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            renderer.sharedMaterial = new Material(Shader.Find("Unlit/Transparent")) {
+                name = "Soft round snowflakes", mainTexture = texture
+            };
             renderer.shadowCastingMode = ShadowCastingMode.Off;
         }
 

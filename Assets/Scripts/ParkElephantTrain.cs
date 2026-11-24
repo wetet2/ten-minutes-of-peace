@@ -28,6 +28,8 @@ namespace PeacePark
         ParkAnimalAction IParkAnimalRide.Action => ParkAnimalAction.Train;
         internal enum RidePhase { AtStart, Running, Unloading, Boarding }
         internal RidePhase Phase { get; private set; }
+        internal bool CanAutoBoard => Phase is RidePhase.Boarding or RidePhase.Unloading ||
+            Phase == RidePhase.Running && elapsed >= LapSeconds - 16f;
         internal int CompletedLaps { get; private set; }
         internal int SeatedAnimals
         {
@@ -83,6 +85,14 @@ namespace PeacePark
             return new Vector3(-half - Mathf.Sin(turn) * Radius, RailHeight, CenterZ + Mathf.Cos(turn) * Radius);
         }
 
+        public static bool WithinTrackLoop(Vector3 point, float margin=0)
+        {
+            float beyondStraight=Mathf.Max(0,Mathf.Abs(point.x)-Straight/2);
+            float depth=point.z-CenterZ;
+            float radius=Radius+margin;
+            return beyondStraight*beyondStraight+depth*depth<=radius*radius;
+        }
+
         internal Pose RideView(bool locomotive)
         {
             if (locomotive)
@@ -125,14 +135,14 @@ namespace PeacePark
             {
                 var car = cars[i + 1];
                 var door = car.TransformPoint(new Vector3(-2.60f, 0, .32f));
-                door.y = transform.position.y + DeckHeight;
+                door.y = transform.TransformPoint(Vector3.up * DeckHeight).y;
                 seats[i] = new Seat
                 {
                     Car = car,
                     Door = door,
                     Step = car.TransformPoint(new Vector3(-1.62f, .33f, .32f)),
-                    Wait = door - car.right * 1.45f + car.forward * .62f,
-                    Exit = door - car.right * 2.35f - car.forward * .60f,
+                    Wait = door + car.TransformVector(new Vector3(-1.45f, 0, .62f)),
+                    Exit = door + car.TransformVector(new Vector3(-2.35f, 0, -.60f)),
                     Floor = car.TransformPoint(new Vector3(-.71f, CarFloor, .32f)),
                     Rest = new Vector3(0, CarFloor, -.30f),
                     AtDoor = Quaternion.LookRotation(-car.right),
@@ -263,10 +273,12 @@ namespace PeacePark
             foreach (var axle in axles) axle.localRotation = Quaternion.Euler(rolling, 0, 0);
             for (int i = 0; i < couplers.Length; i++)
             {
-                var from = cars[i].TransformPoint(new Vector3(0, .38f, -1.49f));
-                var to = cars[i + 1].TransformPoint(new Vector3(0, .38f, 1.49f));
+                var frontCar = cars[i];
+                var rearCar = cars[i + 1];
+                var from = frontCar.localPosition + frontCar.localRotation * new Vector3(0, .38f, -1.49f);
+                var to = rearCar.localPosition + rearCar.localRotation * new Vector3(0, .38f, 1.49f);
                 var link = couplers[i];
-                link.SetPositionAndRotation((from + to) * .5f, Quaternion.LookRotation(from - to));
+                link.SetLocalPositionAndRotation((from + to) * .5f, Quaternion.LookRotation(from - to));
                 link.localScale = new Vector3(.24f, .20f, Vector3.Distance(from, to) + .10f);
             }
         }
@@ -311,6 +323,7 @@ namespace PeacePark
                 var slot = seats[i];
                 if (!slot.AtMark || !slot.Waiting || elapsed < .5f + i * SlotDelay) continue;
                 if (slot.BoardingTime == 0 && elapsed >= 5f) continue;
+                if (slot.BoardingTime == 0) slot.Waiting.BeginRideActivity();
                 slot.BoardingTime += dt;
                 Transfer(slot, slot.Waiting, Mathf.Clamp01(slot.BoardingTime / TransferSeconds), true);
                 if (slot.BoardingTime < TransferSeconds)

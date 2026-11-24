@@ -24,7 +24,7 @@ namespace PeacePark
         static readonly Vector2 LeafBase = new Vector2(.486f, .454f);
 
         readonly RawImage[] leaves = new RawImage[LeafCount];
-        CanvasGroup overlay;
+        RectTransform content;
         RectTransform artwork;
         RawImage blackout;
         RawImage backdrop;
@@ -55,21 +55,14 @@ namespace PeacePark
             canvas.sortingOrder = 100;
             gameObject.AddComponent<GraphicRaycaster>();
 
-            blackout = AddImage("Black Backdrop", transform, Texture2D.whiteTexture);
-            FillScreen(blackout.rectTransform);
-            blackout.color = Color.black;
-            blackout.raycastTarget = true;
+            content = new GameObject("Splash Artwork", typeof(RectTransform)).GetComponent<RectTransform>();
+            content.SetParent(transform, false);
+            FillScreen(content);
 
-            var content = new GameObject("Splash Artwork", typeof(RectTransform), typeof(CanvasGroup));
-            var contentRect = (RectTransform)content.transform;
-            contentRect.SetParent(transform, false);
-            FillScreen(contentRect);
-            overlay = content.GetComponent<CanvasGroup>();
-
-            backdrop = AddImage("Ivory Backdrop", contentRect, Texture2D.whiteTexture);
+            backdrop = AddImage("Ivory Backdrop", content, Texture2D.whiteTexture);
             FillScreen(backdrop.rectTransform);
             artwork = new GameObject("Logo", typeof(RectTransform)).GetComponent<RectTransform>();
-            artwork.SetParent(contentRect, false);
+            artwork.SetParent(content, false);
 
             leaves[0] = AddLeaf("Upper Left", clover, 0);
             leaves[1] = AddLeaf("Upper Right", clover, 1);
@@ -77,6 +70,12 @@ namespace PeacePark
             leaves[3] = AddLeaf("Lower Left", clover, 3);
             wordmark = AddImage("Pori Games", artwork, lettering);
             wordmark.rectTransform.sizeDelta = new Vector2(LogoWidth, LogoWidth * lettering.height / lettering.width);
+
+            // Fade the rendered artwork by drawing black over the entire composition.
+            blackout = AddImage("Black Fade", transform, Texture2D.whiteTexture);
+            FillScreen(blackout.rectTransform);
+            blackout.raycastTarget = true;
+
             Layout();
             Animate(0);
             createdOnFrame = Time.frameCount;
@@ -136,7 +135,7 @@ namespace PeacePark
             if (elapsed < SplashDuration) return;
 
             // Keep one fully black frame between the two fades.
-            overlay.gameObject.SetActive(false);
+            content.gameObject.SetActive(false);
             showMenu();
             revealingMenu = true;
             elapsed = 0f;
@@ -156,7 +155,7 @@ namespace PeacePark
             float reveal = Ease((elapsed - WordmarkStart) / WordmarkDuration);
             wordmark.color = new Color(1, 1, 1, reveal);
             wordmark.rectTransform.anchoredPosition = Vector2.down * (wordmark.rectTransform.rect.height * .10f * (1f - reveal));
-            overlay.alpha = 1f - Ease((elapsed - FadeOutStart) / FadeOutDuration);
+            blackout.color = new Color(0, 0, 0, Ease((elapsed - FadeOutStart) / FadeOutDuration));
         }
 
         static float Ease(float progress) => Mathf.SmoothStep(0, 1, progress);

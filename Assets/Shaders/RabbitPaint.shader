@@ -9,6 +9,7 @@ Shader "PeacePark/RabbitPaint"
         _BoundsMin ("Character bounds min", Vector) = (-1.7,0,0,0)
         _BoundsSize ("Character bounds size", Vector) = (3.4,5.2,1,0)
         [HideInInspector] _AnimalVisibility("Animal visibility",Range(0,1))=1
+        [HideInInspector] _AnimalHighlight("Mouse hover highlight",Range(0,1))=0
     }
     SubShader
     {
@@ -31,6 +32,7 @@ Shader "PeacePark/RabbitPaint"
             sampler2D _BackTex;
             fixed4 _BaseColor;
             float _Species;
+            half _AnimalHighlight;
             float4 _BoundsMin;
             float4 _BoundsSize;
 
@@ -43,6 +45,7 @@ Shader "PeacePark/RabbitPaint"
                 SHADOW_COORDS(2)
                 float3 rest:TEXCOORD3;
                 float4 screen:TEXCOORD4;
+                float3 viewDir:TEXCOORD5;
             };
             v2f vert(appdata v)
             {
@@ -52,6 +55,7 @@ Shader "PeacePark/RabbitPaint"
                 o.rest=v.rest;
                 o.screen=ComputeScreenPos(o.pos);
                 o.worldNormal=UnityObjectToWorldNormal(v.normal);
+                o.viewDir=WorldSpaceViewDir(v.vertex);
                 TRANSFER_SHADOW(o);
                 return o;
             }
@@ -181,10 +185,17 @@ Shader "PeacePark/RabbitPaint"
                 float3 l=normalize(_WorldSpaceLightPos0.xyz);
                 float shadow=SHADOW_ATTENUATION(i);
                 fixed3 light=lerp(fixed3(.65,.78,.73),fixed3(1.05,1.035,1),smoothstep(-.65,.9,dot(n,l)))*lerp(.7,1,shadow);
-                return fixed4(albedo*light,1);
+                fixed3 lit=albedo*light;
+                if(_AnimalHighlight>0)
+                {
+                    half edge=1-saturate(dot(n,normalize(i.viewDir)));
+                    half rim=smoothstep(.28,.84,edge);
+                    lit=lerp(lit,fixed3(1,.98,.77),_AnimalHighlight*(.10+.75*rim));
+                }
+                return fixed4(lit,1);
             }
             ENDCG
         }
-        UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
+        UsePass "PeacePark/Storybook/SHADOWCASTER"
     }
 }

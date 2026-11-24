@@ -25,6 +25,10 @@ Unity Hub에서 **6000.6.8f1**로 프로젝트를 엽니다. **Peace Park → Op
 
 Windows 빌드를 공유할 때는 `Builds/Windows` 폴더 전체를 복사합니다. Android 빌드에는 Unity Hub의 **Android Build Support**, **Android SDK & NDK Tools**, **OpenJDK** 모듈이 필요합니다.
 
-### Android 기기로 다운로드하기
+### Windows 설치 파일 만들기
 
-APK를 빌드한 뒤 프로젝트 폴더에서 `node apk-server.js`를 실행합니다. PC에서는 [다운로드 페이지](http://localhost:10282/)를 열고, 같은 Wi-Fi의 Android 기기에서는 브라우저에 `http://<PC의 IPv4 주소>:10282/`를 입력합니다.
+Windows 빌드 후 [Inno Setup](https://jrsoftware.org/inno-setup)을 설치하고 `ISCC.exe`로 `WindowsInstaller/TenMinutesOfPeace.iss`를 컴파일합니다. Unity의 Windows 버전이 변경되면 ISCC에 `/DGameVersion=새버전`을 전달합니다. 결과는 `Builds/Windows/TenMinutesOfPeace-Setup.exe`에 저장됩니다.
+
+### 빌드 다운로드하기
+
+프로젝트 폴더에서 `node apk-server.js`를 실행합니다. PC에서는 [다운로드 페이지](http://localhost:10282/)를 열고, 같은 Wi-Fi의 Android 기기에서는 브라우저에 `http://<PC의 IPv4 주소>:10282/`를 입력합니다.

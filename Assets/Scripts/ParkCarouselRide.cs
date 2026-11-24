@@ -8,13 +8,14 @@ namespace PeacePark
         static readonly Vector3 FirstStep=new Vector3(0,.17f,-4.30f);
         static readonly Vector3 SecondStep=new Vector3(0,.27f,-4.02f);
         const float TransferSeconds=4f;
+        const float HorseStroke=.45f,HorseCycleDegrees=45f;
 
         [SerializeField] ParkRoundaboutSpin spin;
-        [SerializeField] Transform[] saddles;
+        [SerializeField] Transform[] saddles,horseLifts;
         [SerializeField] float deckHeight;
         ParkRabbitAgent rider;
         Transform saddle, grip;
-        float remainingDegrees, transferTime;
+        float remainingDegrees, transferTime, liftRotation;
         enum Stage { Approaching, Aligning, Mounting, Riding, Dismounting }
         Stage stage;
 
@@ -22,10 +23,11 @@ namespace PeacePark
         Vector3 QueuePoint=>transform.TransformPoint(QueuePosition);
         Quaternion AtSteps=>Quaternion.LookRotation(-transform.forward);
 
-        public void Configure(ParkRoundaboutSpin platform,Transform[] seats,float deck)
+        public void Configure(ParkRoundaboutSpin platform,Transform[] seats,float deck,Transform[] lifts=null)
         {
             spin=platform;
             saddles=seats;
+            horseLifts=lifts;
             deckHeight=deck;
             spin.DriveExternally();
         }
@@ -65,18 +67,23 @@ namespace PeacePark
             float degrees=dt*ParkRoundaboutSpin.DegreesPerSecond;
             if(!rider)
             {
-                spin.Advance(degrees);
+                AdvancePlatform(degrees);
                 return;
             }
 
             switch(stage)
             {
                 case Stage.Approaching:
-                    spin.Advance(degrees);
+                    AdvancePlatform(degrees);
                     if(rider.WalkToRideMark(QueuePoint,AtSteps,dt))AlignWithSteps();
                     break;
                 case Stage.Aligning:
-                    if(Turn(degrees)){stage=Stage.Mounting;transferTime=0;}
+                    if(Turn(degrees))
+                    {
+                        rider.BeginRideActivity();
+                        stage=Stage.Mounting;
+                        transferTime=0;
+                    }
                     break;
                 case Stage.Mounting:
                     transferTime+=dt;
@@ -119,9 +126,26 @@ namespace PeacePark
         bool Turn(float degrees)
         {
             float step=Mathf.Min(degrees,remainingDegrees);
-            spin.Advance(step);
+            AdvancePlatform(step);
             remainingDegrees-=step;
             return remainingDegrees<=0;
+        }
+
+        void AdvancePlatform(float degrees)
+        {
+            spin.Advance(degrees);
+            if(horseLifts==null)return;
+            liftRotation=Mathf.Repeat(liftRotation+degrees,HorseCycleDegrees);
+            float phase=liftRotation/HorseCycleDegrees*(2*Mathf.PI);
+            float rise=.5f-.5f*Mathf.Cos(phase);
+            for(int i=0;i<horseLifts.Length;i++)
+            {
+                var lift=horseLifts[i];
+                if(!lift)continue;
+                var position=lift.localPosition;
+                position.y=HorseStroke*(i%2==0?rise:1-rise);
+                lift.localPosition=position;
+            }
         }
 
         void Transfer(float progress)
@@ -133,9 +157,9 @@ namespace PeacePark
             {
                 float mount=Mathf.SmoothStep(0,1,Mathf.InverseLerp(.71f,1,progress));
                 rider.transform.rotation=Quaternion.Slerp(AtSteps,saddle.rotation,mount);
-                var hipOffset=rider.Character.PlayCarouselSeatPose(mount);
+                var hipOffset=rider.Character.PlayStraddleRidePose(mount);
                 rider.transform.position=Vector3.Lerp(besideHorse,saddle.position-hipOffset,mount);
-                rider.Character.GripCarouselHandle(grip.position,Mathf.SmoothStep(0,1,Mathf.InverseLerp(.5f,1,mount)));
+                rider.Character.GripRideHandle(grip.position,Mathf.SmoothStep(0,1,Mathf.InverseLerp(.5f,1,mount)));
                 return;
             }
             Vector3 point=progress<.24f
@@ -151,9 +175,9 @@ namespace PeacePark
         void SeatRider()
         {
             rider.transform.rotation=saddle.rotation;
-            var hipOffset=rider.Character.PlayCarouselSeatPose(1);
+            var hipOffset=rider.Character.PlayStraddleRidePose(1);
             rider.transform.position=saddle.position-hipOffset;
-            rider.Character.GripCarouselHandle(grip.position,1);
+            rider.Character.GripRideHandle(grip.position,1);
         }
     }
 }

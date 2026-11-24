@@ -99,6 +99,34 @@ Shader "PeacePark/Storybook"
             }
             ENDCG
         }
-        UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
+        Pass
+        {
+            Name "SHADOWCASTER"
+            Tags {"LightMode"="ShadowCaster"}
+            ZWrite On ZTest LEqual
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile_shadowcaster
+            #pragma multi_compile_local_fragment _ PEACE_PARK_ANIMAL_FADING
+            #include "UnityCG.cginc"
+            #include "AnimalFade.cginc"
+
+            struct v2f { V2F_SHADOW_CASTER; };
+            v2f vert(appdata_base v)
+            {
+                v2f o;
+                TRANSFER_SHADOW_CASTER_NORMALOFFSET(o)
+                return o;
+            }
+            float4 frag(v2f i):SV_Target
+            {
+                #if defined(PEACE_PARK_ANIMAL_FADING)
+                    ApplyAnimalFadeAtPixel(floor(i.pos.xy));
+                #endif
+                SHADOW_CASTER_FRAGMENT(i)
+            }
+            ENDCG
+        }
     }
 }

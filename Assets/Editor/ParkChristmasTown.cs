@@ -128,12 +128,15 @@ namespace PeacePark.Editor
                 var houses=new Pieces();
                 var facing=Quaternion.Euler(0,side<0?180:0,0);
                 float line=side<0?FrontShopLine:SquareRear;
+                // Leave the foreground open so these facades don't mask the ice from the default camera.
+                float innerEdge=side<0?18.1f:2.5f;
+                int lotsPerHalf=side<0?2:4;
                 for(int half=-1;half<=1;half+=2)
-                for(int lot=0;lot<4;lot++)
+                for(int lot=0;lot<lotsPerHalf;lot++)
                 {
                     const float width=7.2f;
                     float depth=Range(6.3f,7.05f);
-                    var point=new Vector3(half*(2.5f+(lot+.5f)*width),0,line+side*depth/2);
+                    var point=new Vector3(half*(innerEdge+(lot+.5f)*width),0,line+side*depth/2);
                     AddPalazzo(houses,districts[0],point,facing,width-.30f,depth,lot,side+2);
                 }
                 BuildSide(houses,side<0?"South residences":"North residences",court,true);
@@ -255,7 +258,7 @@ namespace PeacePark.Editor
             Surface(inner,sideFront,start,rearFront);
             Surface(-inner,inner,26.36f,rearFront);
             // Connect the existing approach to the arcades without layering tile surfaces.
-            Surface(-1.70f,1.70f,FrontShopLine+3,-15.325f);
+            Surface(-1.70f,1.70f,FrontShopLine+3,ParkChristmasRinkSetup.FrontEdge-.20f);
             Surface(-sideFront,-inner,FrontShopLine+3,start);
             Surface(inner,sideFront,FrontShopLine+3,start);
             Surface(-sideFront,sideFront,FrontShopLine,FrontShopLine+3);

@@ -66,6 +66,10 @@ namespace PeacePark.Editor
             SceneManager.MoveGameObjectToScene(themePark.gameObject,scene);
             venues.Add(ParkThemeParkSetup.Create(themePark));
             themePark.gameObject.SetActive(false);
+            var resort=Group("Resort pool venue",null,Vector3.zero);
+            SceneManager.MoveGameObjectToScene(resort.gameObject,scene);
+            venues.Add(ParkResortPoolSetup.Create(resort));
+            resort.gameObject.SetActive(false);
             controller.Venues=venues.ToArray();
         }
 

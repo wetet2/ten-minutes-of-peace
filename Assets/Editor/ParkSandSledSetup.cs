@@ -13,9 +13,9 @@ namespace PeacePark.Editor
             var sled = Group("Wooden sand sled", pickup, Vector3.zero);
             var box = ParkSurface.RoundedBox();
             var cylinder = PrimitiveMesh(PrimitiveType.Cylinder);
-            var wood = Paint("Amber sled wood", "#BF7B37");
-            var light = Paint("Honey sled slats", "#E6AA5F");
-            var deep = Paint("Bent wooden runners", "#8B582C");
+            var wood = SledPaint("Amber sled wood", "#BF7B37");
+            var light = SledPaint("Honey sled slats", "#E6AA5F");
+            var deep = SledPaint("Bent wooden runners", "#8B582C");
             var parts = new Pieces();
             for (int i = -3; i <= 3; i++)
                 parts.Add(box, i % 2 == 0 ? light : wood, new Vector3(i * .225f, .23f, -.10f), new Vector3(.216f, .16f, 2.20f));
@@ -37,9 +37,9 @@ namespace PeacePark.Editor
             Beam(parts, box, light, new Vector3(-.78f,.29f,1.22f), new Vector3(.78f,.29f,1.22f), .12f);
             parts.Build(sled);
             var rope = ParkGeometry.Place("Sled tow rope", cylinder, pickup, Vector3.zero, Vector3.one,
-                Paint("Woven golden tow rope", "#BD8949"));
+                SledPaint("Woven golden tow rope", "#BD8949"));
             var track = new Material(sand) { name = "Subtle sand sled trails", color = new Color32(231,181,111,255) };
-            ParkGeometry.Place("Uphill tow marks", TrackMesh(false, .43f), course, Vector3.zero, Vector3.one, track);
+            ParkGeometry.Place("Side path tow marks", TrackMesh(false, .43f), course, Vector3.zero, Vector3.one, track);
             ParkGeometry.Place("Downhill runner marks", TrackMesh(true, ParkSandSled.RunnerHalfSpacing), course, Vector3.zero, Vector3.one, track);
 
             var particles = Group("Sled sand spray", pickup, Vector3.zero).gameObject.AddComponent<ParticleSystem>();
@@ -64,6 +64,13 @@ namespace PeacePark.Editor
             var ride = course.gameObject.AddComponent<ParkSandSled>();
             ride.Configure(pickup, sled, rope);
             return ride;
+        }
+
+        static Material SledPaint(string name, string color)
+        {
+            var material = Paint(name, color);
+            material.EnableKeyword("PEACE_PARK_ANIMAL_FADING");
+            return material;
         }
 
         static void Beam(Pieces pieces, Mesh box, Material material, Vector3 from, Vector3 to, float width)

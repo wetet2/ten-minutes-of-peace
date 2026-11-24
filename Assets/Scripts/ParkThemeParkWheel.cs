@@ -12,6 +12,8 @@ namespace PeacePark
         public const float CabinOffset = -2.45f;
         const float TravelTime = 6f;
         const float TransferTime = 2.6f;
+        const float CruiseSpeed = 1f / TravelTime;
+        const float Acceleration = .21f;
         static readonly Vector3 SeatPosition = new Vector3(0, CabinFloor, .33f);
         static readonly Vector3 QueuePosition = new Vector3(.25f, .015f, CabinOffset - 4.6f);
         static readonly Vector3 ExitPosition = new Vector3(-1.95f, .015f, CabinOffset - 4.65f);
@@ -27,8 +29,9 @@ namespace PeacePark
         enum StopPhase { Boarding, Turning, Unloading }
         StopPhase phase;
         int dock;
-        float time, boardingTime;
+        float time, boardingTime, rotation, speed;
         bool atMark;
+        internal Vector3 BoardingPoint => transform.TransformPoint(QueuePosition);
 
         public void Configure(Transform wheelRoot, Transform[] cabins)
         {
@@ -41,7 +44,9 @@ namespace PeacePark
             if (!wheel) return;
             riders = new ParkRabbitAgent[gondolas.Length];
             dock = 0;
-            SetPhase(StopPhase.Boarding);
+            rotation = 0;
+            speed = CruiseSpeed;
+            SetPhase(StopPhase.Turning);
             PlaceWheel(0);
         }
 
@@ -78,7 +83,7 @@ namespace PeacePark
         internal bool TryRequestedRide(ParkRabbitAgent animal)
         {
             if(!isActiveAndEnabled||riders.Length==0||waiting||
-                !animal.TryReserveRequestedRide(this,transform.TransformPoint(QueuePosition)))return false;
+                !animal.TryReserveRequestedRide(this,BoardingPoint))return false;
             waiting=animal;
             return true;
         }
@@ -88,7 +93,7 @@ namespace PeacePark
             if (riders.Length == 0) return;
             time += dt;
             if (waiting && !atMark)
-                atMark = waiting.WalkToRideMark(transform.TransformPoint(QueuePosition),
+                atMark = waiting.WalkToRideMark(BoardingPoint,
                     transform.rotation * Quaternion.Euler(0, 180, 0), dt);
 
             switch (phase)
@@ -97,12 +102,7 @@ namespace PeacePark
                     Board(dt);
                     break;
                 case StopPhase.Turning:
-                    PlaceWheel(dock + Mathf.SmoothStep(0, 1, time / TravelTime));
-                    if (time >= TravelTime)
-                    {
-                        dock = (dock + 1) % gondolas.Length;
-                        SetPhase(riders[dock] ? StopPhase.Unloading : StopPhase.Boarding);
-                    }
+                    Turn(dt);
                     break;
                 case StopPhase.Unloading:
                     if (riders[dock])
@@ -112,9 +112,30 @@ namespace PeacePark
                         riders[dock].EndRide();
                         riders[dock] = null;
                     }
-                    SetPhase(StopPhase.Boarding);
+                    SetPhase(waiting && atMark ? StopPhase.Boarding : StopPhase.Turning);
                     break;
             }
+        }
+
+        void Turn(float dt)
+        {
+            int next = Mathf.FloorToInt(rotation) + 1;
+            int nextCabin = next % gondolas.Length;
+            float remaining = next - rotation;
+            bool stop = riders[nextCabin] || (waiting && atMark);
+            float target = stop ? Mathf.Min(CruiseSpeed, Mathf.Sqrt(2 * Acceleration * remaining)) : CruiseSpeed;
+            speed = Mathf.MoveTowards(speed, target, Acceleration * dt);
+            float step = speed * dt;
+            if (stop && remaining <= Mathf.Max(step, .001f))
+            {
+                rotation = dock = nextCabin;
+                speed = 0;
+                PlaceWheel(rotation);
+                SetPhase(riders[dock] ? StopPhase.Unloading : StopPhase.Boarding);
+                return;
+            }
+            rotation = Mathf.Repeat(rotation + step, gondolas.Length);
+            PlaceWheel(rotation);
         }
 
         void SetPhase(StopPhase next)
@@ -125,17 +146,20 @@ namespace PeacePark
 
         void Board(float dt)
         {
-            if (waiting && atMark && time >= .4f)
+            if (!waiting || !atMark)
             {
-                boardingTime += dt;
-                Transfer(waiting, Mathf.Clamp01(boardingTime / TransferTime), true);
-                if (boardingTime < TransferTime) return;
-                riders[dock] = waiting;
-                waiting = null;
-                atMark = false;
                 SetPhase(StopPhase.Turning);
+                return;
             }
-            else if (time >= 2.35f) SetPhase(StopPhase.Turning);
+            if (time < .4f) return;
+            if (boardingTime == 0) waiting.BeginRideActivity();
+            boardingTime += dt;
+            Transfer(waiting, Mathf.Clamp01(boardingTime / TransferTime), true);
+            if (boardingTime < TransferTime) return;
+            riders[dock] = waiting;
+            waiting = null;
+            atMark = false;
+            SetPhase(StopPhase.Turning);
         }
 
         void PlaceWheel(float stops)

@@ -6,39 +6,50 @@ namespace PeacePark
 {
     public sealed class ParkSandSled : MonoBehaviour, IParkAnimalRide
     {
-        const float TowGap = 2.65f;
-        const float ClimbSpeed = 7.1f;
+        const float TowGap = 2.15f;
+        const float TowSpeed = 4.5f;
+        const float TowFadeDistance = TowSpeed * .64f;
+        const float HiddenSeconds = .28f;
+        const float RevealSeconds = .70f;
+        const float CrestBuffer = 7.4f;
         const float SlideSeconds = 6.1f;
-        const float ClimbSpacing = 7.5f;
         const float GlideSpacing = 4.2f;
         const float CrestClearance = 6.4f;
         const float GroundClearance = .022f;
+        const float WalkingClearance = 2.65f;
         public const float RunnerHalfSpacing = .78f;
         internal const float RearRunnerContact = -1.14f, FrontRunnerContact = .69f;
-        static readonly Vector2 Base = new Vector2(-17.3f, -15.2f);
-        static readonly Vector2 TowBase = new Vector2(-17.3f, -17.24f);
         static readonly Vector2 Arrival = ParkDuneTerrain.SledLanding;
         static readonly Vector2 Crest = ParkDuneTerrain.SledDuneCrest;
         static readonly Vector2 DescentDirection = ParkDuneTerrain.SledDescentDirection;
-        static readonly SandRoute Up = new SandRoute(TowBase, new Vector2(-41, -16), new Vector2(-51, 18), Crest);
+        static readonly Vector2 DescentSide = ParkDuneTerrain.SledDescentSide;
+        static readonly Vector2 Base = CourseLocation(43.8f, 6.75f);
+        static readonly SandRoute Tow = new SandRoute(CourseLocation(44f, 9.2f), CourseLocation(41.15f, 8.25f),
+            CourseLocation(37.45f, 6.80f), CourseLocation(34.9f, 6.35f));
         static readonly SandRoute Down = new SandRoute(Crest, Vector2.Lerp(Crest, Arrival, 1f / 3),
             Vector2.Lerp(Crest, Arrival, 2f / 3), Arrival);
-        static readonly Vector3 ExitPoint = OnSand(Arrival + new Vector2(-DescentDirection.y, DescentDirection.x) * 2.3f);
+        static readonly float Runout = Vector2.Distance(Crest, Arrival) + 2.6f;
+        static readonly Vector3 ExitPoint = OnSand(Arrival + DescentSide * 3.45f);
+        static readonly Vector3 SeatOffset = new Vector3(0, .10f, -.22f);
 
         [SerializeField] Transform pickupRig, parkedSled, parkedRope;
 
-        enum Stage { Approach, Grab, Pull, Sit, Slide, Stand }
+        enum Stage { Approach, Grab, Pull, Hidden, Reveal, Slide, Stand }
         readonly List<Ride> rides = new List<Ride>();
+        static readonly int VisibilityProperty = Shader.PropertyToID("_AnimalVisibility");
+        MaterialPropertyBlock sledProperties;
 
         sealed class Ride
         {
             public readonly ParkRabbitAgent Animal;
             public Stage Phase;
             public Transform Rig, Sled, Rope;
+            public MeshRenderer[] Renderers;
             public ParticleSystem Dust;
             public float Elapsed, Distance, Speed, DustBudget;
-            public Vector3 TransitionPosition, StartSledPosition;
-            public Quaternion TransitionFacing, StartSledRotation;
+            public float Visibility = 1;
+            public Vector3 TransitionPosition;
+            public Quaternion TransitionFacing;
 
             public Ride(ParkRabbitAgent animal) => Animal = animal;
 
@@ -52,15 +63,13 @@ namespace PeacePark
             {
                 TransitionPosition = Animal.transform.position;
                 TransitionFacing = Animal.transform.rotation;
-                StartSledPosition = Sled.position;
-                StartSledRotation = Sled.rotation;
             }
 
             public float Ease(float duration) => Mathf.SmoothStep(0, 1, Elapsed / duration);
         }
 
         ParkAnimalAction IParkAnimalRide.Action => ParkAnimalAction.SandSled;
-        internal Vector3 Approach => ToWorld(Up.At(TowGap));
+        internal Vector3 Approach => ToWorld(Tow.At(TowGap));
         internal Transform Sled => parkedSled;
         internal int ActiveSledCount
         {
@@ -75,8 +84,16 @@ namespace PeacePark
 
         internal Transform SledFor(ParkRabbitAgent animal) => FindRide(animal)?.Sled;
         internal bool IsPulling(ParkRabbitAgent animal) => FindRide(animal)?.Phase == Stage.Pull;
+        internal bool IsRevealing(ParkRabbitAgent animal) => FindRide(animal)?.Phase == Stage.Reveal;
         internal bool IsSliding(ParkRabbitAgent animal) => FindRide(animal)?.Phase == Stage.Slide;
         internal bool IsDismounting(ParkRabbitAgent animal) => FindRide(animal)?.Phase == Stage.Stand;
+        internal Vector3 CrestViewPoint => ToWorld(OnSand(Crest));
+
+        internal Pose LaunchViewAnchor()
+        {
+            var pose = DownhillPose(0);
+            return new Pose(pose.position + pose.rotation * Vector3.Scale(SeatOffset, transform.lossyScale), pose.rotation);
+        }
 
         public static Vector3 PickupPoint => OnSand(Base);
 
@@ -85,7 +102,7 @@ namespace PeacePark
             pickupRig = rig;
             parkedSled = vehicle;
             parkedRope = rope;
-            var facing = Up.Tangent(0);
+            var facing = Tow.Tangent(0);
             parkedSled.SetPositionAndRotation(ToWorld(PickupPoint) + transform.up * GroundClearance, VehicleRotation(facing));
             var displayLead = Base + new Vector2(facing.x, facing.z).normalized * TowGap;
             DrawRope(parkedRope, Nose(parkedSled), ToWorld(OnSand(displayLead)) + transform.up * .12f);
@@ -95,25 +112,36 @@ namespace PeacePark
 
         public static Vector3 CoursePoint(bool downhill, float progress)
         {
-            var route = downhill ? Down : Up;
+            var route = downhill ? Down : Tow;
             return route.At(route.Length * Mathf.Clamp01(progress));
         }
 
         public static bool InCourseCorridor(Vector2 point, float clearance)
         {
-            return Up.Near(point, clearance) || Down.Near(point, clearance) ||
+            return Tow.Near(point, clearance) || Down.Near(point, clearance) ||
+                (point - CourseLocation(-CrestBuffer, 0)).sqrMagnitude < clearance * clearance ||
+                (point - XZ(Tow.At(Tow.Length + TowGap))).sqrMagnitude < clearance * clearance ||
                 (point - Base).sqrMagnitude < clearance * clearance ||
                 (point - new Vector2(ExitPoint.x, ExitPoint.z)).sqrMagnitude < clearance * clearance;
+        }
+
+        internal bool IsInDescentLane(Vector3 worldPosition) => LaneOverlap(CourseCoordinates(worldPosition)) > 0;
+        internal bool CanWanderAt(Vector3 worldPosition) => CourseCoordinates(worldPosition).x >= WalkingClearance;
+
+        static float LaneOverlap(Vector2 point) => Mathf.Max(0, Mathf.Min(WalkingClearance - Mathf.Abs(point.x),
+            Mathf.Min(point.y + CrestBuffer, Runout - point.y)));
+
+        Vector2 CourseCoordinates(Vector3 worldPosition)
+        {
+            var local = transform.InverseTransformPoint(worldPosition);
+            var offset = new Vector2(local.x, local.z) - Crest;
+            return new Vector2(Vector2.Dot(offset, DescentSide), Vector2.Dot(offset, DescentDirection));
         }
 
         internal bool TryQueue(ParkRabbitAgent animal)
         {
             if (!isActiveAndEnabled || !pickupRig || FindRide(animal) != null) return false;
-            if (rides.Count > 0)
-            {
-                var last = rides[rides.Count - 1];
-                if (last.Phase < Stage.Pull || (last.Phase == Stage.Pull && last.Distance < ClimbSpacing)) return false;
-            }
+            if (rides.Count > 0 && rides[rides.Count - 1].Phase < Stage.Hidden) return false;
             if (!animal.TryReserveRequestedRide(this, Approach)) return false;
             rides.Add(new Ride(animal));
             return true;
@@ -143,9 +171,10 @@ namespace PeacePark
             switch (ride.Phase)
             {
                 case Stage.Approach:
-                    if (animal.WalkToRideMark(Approach, Facing(Up.Tangent(TowGap)), dt, speed: 2.65f))
+                    if (animal.WalkToRideMark(Approach, Facing(Tow.Tangent(TowGap)), dt, speed: 3.2f))
                     {
                         SpawnSled(ride);
+                        animal.BeginRideActivity();
                         ride.Enter(Stage.Grab);
                     }
                     break;
@@ -156,33 +185,33 @@ namespace PeacePark
                     if (reach >= 1) ride.Enter(Stage.Pull);
                     break;
                 case Stage.Pull:
-                    ride.Speed = Mathf.MoveTowards(ride.Speed, ClimbSpeed, dt * 12);
-                    float limit = UphillLimit(ahead);
-                    float previous = ride.Distance;
-                    ride.Distance = Mathf.MoveTowards(previous, Mathf.Max(previous, limit), ride.Speed * dt);
-                    if (ride.Distance > previous)
-                    {
-                        PoseUphill(ride.Sled, ride.Distance);
-                        animal.WalkAtRideStation(ToWorld(Up.At(ride.Distance + TowGap)), cadenceScale: .48f);
-                    }
-                    else character.PlayIdlePose();
+                    ride.Speed = Mathf.MoveTowards(ride.Speed, TowSpeed, dt * 14);
+                    ride.Distance = Mathf.MoveTowards(ride.Distance, Tow.Length, ride.Speed * dt);
+                    PoseTow(ride.Sled, ride.Distance);
+                    animal.WalkAtRideStation(ToWorld(Tow.At(ride.Distance + TowGap)), cadenceScale: .68f);
                     DrawRope(ride.Rope, Nose(ride.Sled), character.GripSandSledRope(1));
-                    if (ride.Distance >= Up.Length)
+                    SetRideVisibility(ride, Mathf.SmoothStep(0, 1, (Tow.Length - ride.Distance) / TowFadeDistance));
+                    if (ride.Distance >= Tow.Length)
                     {
-                        ride.SaveTransition();
-                        ride.Enter(Stage.Sit);
+                        animal.SetRideHidden(true);
+                        ride.Rig.gameObject.SetActive(false);
+                        ride.Enter(Stage.Hidden);
                     }
                     break;
-                case Stage.Sit:
-                    float board = ride.Ease(.92f);
-                    var launch = DownhillPose(0);
-                    ride.Sled.SetPositionAndRotation(Vector3.Lerp(ride.StartSledPosition, launch.position, board),
-                        Quaternion.Slerp(ride.StartSledRotation, launch.rotation, board));
-                    animal.transform.SetPositionAndRotation(Vector3.Lerp(ride.TransitionPosition, SeatPosition(ride.Sled), board),
-                        Quaternion.Slerp(ride.TransitionFacing, SeatedFacing(ride.Sled), board));
-                    character.PlayRideSeatPose(board);
-                    StowRope(ride);
-                    if (board >= 1)
+                case Stage.Hidden:
+                    if (ride.Elapsed >= HiddenSeconds && (ahead == null || ahead.Phase == Stage.Stand ||
+                        (ahead.Phase == Stage.Slide && ahead.Distance >= CrestClearance)))
+                    {
+                        PoseSeated(ride, 0);
+                        ride.Rig.gameObject.SetActive(true);
+                        animal.SetRideHidden(false);
+                        ride.Enter(Stage.Reveal);
+                    }
+                    break;
+                case Stage.Reveal:
+                    float reveal = ride.Ease(RevealSeconds);
+                    SetRideVisibility(ride, reveal);
+                    if (reveal >= 1)
                     {
                         ride.Distance = 0;
                         if (ride.Dust) ride.Dust.Play();
@@ -201,11 +230,7 @@ namespace PeacePark
                         progress = .5f - Mathf.Sin(Mathf.Asin(1 - 2 * travelled) / 3);
                         ride.Elapsed = progress * SlideSeconds;
                     }
-                    var downhill = DownhillPose(ride.Distance);
-                    ride.Sled.SetPositionAndRotation(downhill.position, downhill.rotation);
-                    animal.transform.SetPositionAndRotation(SeatPosition(ride.Sled), SeatedFacing(ride.Sled));
-                    character.PlayRideSeatPose(1);
-                    StowRope(ride);
+                    PoseSeated(ride, ride.Distance);
                     EmitDust(ride, dt, progress);
                     if (ride.Distance >= Down.Length)
                     {
@@ -226,15 +251,6 @@ namespace PeacePark
             return false;
         }
 
-        static float UphillLimit(Ride ahead)
-        {
-            if (ahead == null) return Up.Length;
-            if (ahead.Phase == Stage.Pull) return ahead.Distance - ClimbSpacing;
-            if (ahead.Phase == Stage.Sit || (ahead.Phase == Stage.Slide && ahead.Distance < CrestClearance))
-                return Up.Length - ClimbSpacing;
-            return Up.Length;
-        }
-
         static float DownhillLimit(Ride ahead)
         {
             if (ahead == null) return Down.Length;
@@ -250,21 +266,45 @@ namespace PeacePark
             ride.Rig = copy;
             ride.Sled = copy.GetChild(parkedSled.GetSiblingIndex());
             ride.Rope = copy.GetChild(parkedRope.GetSiblingIndex());
+            ride.Renderers = copy.GetComponentsInChildren<MeshRenderer>();
             ride.Dust = copy.GetComponentInChildren<ParticleSystem>();
-            PoseUphill(ride.Sled, 0);
+            PoseTow(ride.Sled, 0);
             DrawRope(ride.Rope, Nose(ride.Sled), Approach + transform.up * .12f);
         }
 
+        void SetRideVisibility(Ride ride, float visibility)
+        {
+            if (ride.Visibility == visibility) return;
+            ride.Visibility = visibility;
+            ride.Animal.SetRideVisibility(visibility);
+            sledProperties ??= new MaterialPropertyBlock();
+            foreach (var renderer in ride.Renderers)
+            {
+                renderer.GetPropertyBlock(sledProperties);
+                sledProperties.SetFloat(VisibilityProperty, visibility);
+                renderer.SetPropertyBlock(sledProperties);
+            }
+        }
+
         static Vector3 Nose(Transform sled) => sled.TransformPoint(new Vector3(0, .29f, 1.22f));
-        static Vector3 SeatPosition(Transform sled) => sled.TransformPoint(new Vector3(0, .10f, -.22f));
+        static Vector3 SeatPosition(Transform sled) => sled.TransformPoint(SeatOffset);
         static Quaternion SeatedFacing(Transform sled) => sled.rotation * Quaternion.Euler(0, 180, 0);
         Vector3 ToWorld(Vector3 local) => transform.TransformPoint(local);
         Quaternion Facing(Vector3 localDirection) => Quaternion.LookRotation(-transform.TransformDirection(
             Vector3.ProjectOnPlane(localDirection, Vector3.up).normalized), transform.up);
         Quaternion VehicleRotation(Vector3 localDirection) => Quaternion.LookRotation(transform.TransformDirection(localDirection), transform.up);
 
-        void PoseUphill(Transform sled, float travel) => sled.SetPositionAndRotation(
-            ToWorld(Up.At(travel)) + transform.up * GroundClearance, VehicleRotation(Up.Tangent(travel)));
+        void PoseTow(Transform sled, float travel) => sled.SetPositionAndRotation(
+            ToWorld(Tow.At(travel)) + transform.up * GroundClearance, VehicleRotation(Tow.Tangent(travel)));
+
+        void PoseSeated(Ride ride, float travel)
+        {
+            var pose = DownhillPose(travel);
+            ride.Sled.SetPositionAndRotation(pose.position, pose.rotation);
+            ride.Animal.transform.SetPositionAndRotation(SeatPosition(ride.Sled), SeatedFacing(ride.Sled));
+            ride.Animal.Character.PlayRideSeatPose(1);
+            StowRope(ride);
+        }
 
         Pose DownhillPose(float travel)
         {
@@ -290,7 +330,7 @@ namespace PeacePark
         {
             var line = end - start;
             rope.SetPositionAndRotation((start + end) / 2, Quaternion.FromToRotation(Vector3.up, line));
-            rope.localScale = new Vector3(.048f, line.magnitude / 2, .048f);
+            rope.localScale = new Vector3(.048f, rope.parent.InverseTransformVector(line).magnitude / 2, .048f);
         }
 
         static void StowRope(Ride ride) => DrawRope(ride.Rope, ride.Sled.TransformPoint(new Vector3(-.45f, .34f, 1.18f)),
@@ -321,7 +361,10 @@ namespace PeacePark
                 ride.Rig.gameObject.SetActive(false);
                 Destroy(ride.Rig.gameObject);
             }
-            if (finish && ride.Animal) ride.Animal.EndRide();
+            if (!ride.Animal) return;
+            if (ride.Visibility < 1) ride.Animal.SetRideVisibility(1);
+            if (ride.Animal.IsHiddenForRide) ride.Animal.SetRideHidden(false);
+            if (finish) ride.Animal.EndRide();
         }
 
         bool IParkAnimalRide.TryLeaveQueue(ParkRabbitAgent animal)
@@ -349,6 +392,8 @@ namespace PeacePark
         }
 
         static Vector3 OnSand(Vector2 point) => new Vector3(point.x, ParkDuneTerrain.Height(point.x, point.y), point.y);
+        static Vector2 XZ(Vector3 point) => new Vector2(point.x, point.z);
+        static Vector2 CourseLocation(float along, float across) => Crest + DescentDirection * along + DescentSide * across;
 
         sealed class SandRoute
         {

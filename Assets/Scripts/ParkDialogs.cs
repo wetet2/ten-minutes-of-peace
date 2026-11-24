@@ -7,17 +7,16 @@ namespace PeacePark
 {
     internal sealed class ParkDialogs : MonoBehaviour
     {
-        const float CardWidth = 520, ConnectionHeight = 386, SettingsHeight = 432;
+        const float CardWidth = 520, ConnectionHeight = 386, SettingsHeight = 498;
         static readonly Color Cream = new Color32(255, 249, 229, 255);
         static readonly Color Green = new Color32(187, 227, 140, 255);
         static readonly Color Neutral = new Color32(246, 232, 196, 255);
         ParkPlayground park;
-        RectTransform connection, settings, venues;
-        Text addressSummary, volumePercent, venueHeading, venueCloseLabel;
+        RectTransform connection, settings;
+        Text addressSummary, volumePercent, fullscreenLabel;
         Slider musicVolume;
-        VenueTile[] venueCards;
         InputField address;
-        Button connect, discover, venueClose;
+        Button connect, discover;
         Sprite rounded;
         Texture2D texture;
         internal Sprite ToastBackground=>rounded;
@@ -78,53 +77,40 @@ namespace PeacePark
                 park.SetMusicVolume(percent / 100f);
                 volumePercent.text = $"{percent:0}%";
             });
-            Action(settings, "시작 화면으로", new Rect(32, 369, 220, 46), Neutral).onClick.AddListener(park.ReturnToModeSelection);
-            Action(settings, "닫기", new Rect(268, 369, 220, 46), Green).onClick.AddListener(park.CloseDialog);
-
-            venues = Card("Venue Picker", root);
-            venues.GetComponent<Image>().color = new Color32(249, 247, 231, 255);
-            venueHeading = Label("Venue Heading", venues, "놀이 장소 고르기", ParkFonts.Bold);
-            venueClose = TileButton("닫기", venues, rounded, new Color32(239, 246, 218, 255));
-            venueCloseLabel = Label("Label", (RectTransform)venueClose.transform, "닫기", ParkFonts.Bold);
-            venueClose.onClick.AddListener(park.CloseDialog);
-            var covers = Resources.Load<Texture2D>("Welcome/VenueCovers");
-            var choices = park.Venues;
-            venueCards = new VenueTile[choices?.Length ?? 0];
-            for (int i = 0; i < venueCards.Length; i++)
-            {
-                int index = i;
-                var card = new VenueTile(venues, choices[i], covers, rounded, marksCurrent: true);
-                card.Button.onClick.AddListener(() => park.SelectVenue(index));
-                venueCards[i] = card;
-            }
+            var fullscreen = Action(settings, "전체화면", new Rect(32, 369, 456, 48), Neutral);
+            fullscreenLabel = fullscreen.GetComponentInChildren<Text>();
+            fullscreen.onClick.AddListener(ParkVisualQuality.ToggleFullScreen);
+            Action(settings, "시작 화면으로", new Rect(32, 435, 220, 46), Neutral).onClick.AddListener(park.ReturnToModeSelection);
+            Action(settings, "닫기", new Rect(268, 435, 220, 46), Green).onClick.AddListener(park.CloseDialog);
         }
 
-        internal void Show(bool showConnection, bool showSettings, bool showVenues)
+        internal void Show(bool showConnection, bool showSettings)
         {
-            if (EventSystem.current && (gameObject.activeSelf || showConnection || showSettings || showVenues))
+            if (EventSystem.current && (gameObject.activeSelf || showConnection || showSettings))
                 EventSystem.current.SetSelectedGameObject(null);
             connection.gameObject.SetActive(showConnection);
             settings.gameObject.SetActive(showSettings);
-            venues.gameObject.SetActive(showVenues);
-            gameObject.SetActive(showConnection || showSettings || showVenues);
+            gameObject.SetActive(showConnection || showSettings);
             if (showConnection) RefreshConnection();
             if (showSettings)
             {
                 addressSummary.text = park.Lan.LocalIPv4();
                 musicVolume.SetValueWithoutNotify(park.MusicVolume * 100f);
                 volumePercent.text = $"{musicVolume.value:0}%";
+                RefreshFullscreenLabel();
             }
-            if (showVenues)
-                for (int i = 0; i < venueCards.Length; i++)
-                    venueCards[i].SetCurrent(i == park.VenueIndex);
             if (gameObject.activeSelf) RefreshLayout();
         }
 
         void Update()
         {
             if (park.IsConnecting) RefreshConnection();
+            if (park.IsSettingsOpen) RefreshFullscreenLabel();
             RefreshLayout();
         }
+
+        void RefreshFullscreenLabel() => fullscreenLabel.text =
+            ParkLanguage.Text(ParkVisualQuality.IsFullScreen ? "전체화면 종료" : "전체화면");
 
         void OnApplicationFocus(bool focused)
         {
@@ -175,35 +161,6 @@ namespace PeacePark
             Vector2 center = new Vector2(safe.center.x, Screen.height - safe.center.y);
             LayoutCard(connection, center, ConnectionHeight, scale);
             LayoutCard(settings, center, SettingsHeight, scale);
-            LayoutVenuePicker(safe, center);
-        }
-
-        void LayoutVenuePicker(Rect safe, Vector2 center)
-        {
-            if (venueCards.Length == 0) return;
-            int columns = Mathf.Min(3, venueCards.Length);
-            int rows = (venueCards.Length + columns - 1) / columns;
-            float width = Mathf.Min(safe.width * .94f, safe.height * 1.37f, 1140);
-            float padding = Mathf.Clamp(width * .027f, 10, 26);
-            float gap = Mathf.Clamp(width * .022f, 7, 20);
-            float header = Mathf.Clamp(width * .072f, 34, 64);
-            float cellWidth = (width - 2 * padding - (columns - 1) * gap) / columns;
-            float cellHeight = Mathf.Min(cellWidth * (safe.width < safe.height ? 1.08f : .97f),
-                (safe.height * .91f - 2 * padding - header - rows * gap) / rows);
-            float height = 2 * padding + header + rows * (cellHeight + gap);
-            Place(venues, new Rect(center.x - width * .5f, center.y - height * .5f, width, height));
-            venues.GetComponent<Image>().pixelsPerUnitMultiplier = 16f / Mathf.Clamp(width * .027f, 11, 27);
-
-            float closeHeight = header * .69f;
-            float closeWidth = closeHeight * 1.68f;
-            float headingInset = padding + closeWidth + gap * .58f;
-            FitLabel(venueHeading, new Rect(headingInset, padding, width - 2 * headingInset, header), header * .69f);
-            LayoutTileButton(venueClose, new Rect(width - padding - closeWidth,
-                padding + (header - closeHeight) / 2, closeWidth, closeHeight));
-            venueClose.image.pixelsPerUnitMultiplier = 64f / closeHeight;
-            FitLabel(venueCloseLabel, new Rect(0, 0, closeWidth, closeHeight), closeHeight * .43f);
-            LayoutVenueTiles(venueCards, columns, new Vector2(width * .5f, padding + header + gap),
-                new Vector2(cellWidth, cellHeight), gap);
         }
 
         static void LayoutCard(RectTransform card, Vector2 center, float height, float scale)

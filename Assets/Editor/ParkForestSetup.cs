@@ -70,7 +70,7 @@ namespace PeacePark.Editor
                 LawnHeight=Ground, WalkArea=Rect.MinMaxRect(-14.75f,-11.45f,14.45f,2.9f),
                 WalkObstacles=obstacles.ToArray(),
                 PondCenter=PondCenter, PondRadii=PondSize+new Vector2(.48f,.48f),
-                Focus=new Vector3(0,2.1f,-1.2f), Distance=39.5f, Yaw=-6, Pitch=34,
+                Focus=new Vector3(0,2.1f,-1.2f), Distance=33f, Yaw=-6, Pitch=34,
                 MaxDistance=58, CameraPanLimits=new Vector2(20,16),
                 Sky=new Color32(196,227,214,255)
             };
@@ -211,8 +211,10 @@ namespace PeacePark.Editor
                     if(ring==0&&p.z>-12.8f&&p.z<4.65f&&Mathf.Abs(p.x)<15.3f)continue;
                     if(ring==0&&p.z< -6&&Mathf.Abs(p.x)<8)continue;
                     if(ring==1&&p.z< -13&&Mathf.Abs(p.x)<4)continue;
-                    float height=ring==0?5.5f:7f;
-                    nature.Place(i%3==0?"UNS_Spruce_02":"UNS_Spruce_01",p,height+(float)random.NextDouble()*3.5f,i*67+ring*89);
+                    float height=(ring==0?5.5f:7f)+(float)random.NextDouble()*3.5f;
+                    float foreground=Mathf.InverseLerp(-7.5f,-15f,p.z);
+                    height*=Mathf.SmoothStep(1f,.34f,foreground);
+                    nature.Place(i%3==0?"UNS_Spruce_02":"UNS_Spruce_01",p,height,i*67+ring*89);
                     if(ring<2&&i%2==0)nature.Place("UNS_Bush",p+new Vector3(1.35f,0,-.80f),.67f+i%4*.22f,i*26);
                     if(ring<2&&i%4==0)nature.Place("UNS_Standard_Rock_0"+(1+i%3),p+new Vector3(-1,0,1.1f),.78f+i%5*.26f,i*31);
                 }

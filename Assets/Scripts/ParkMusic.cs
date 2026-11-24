@@ -16,7 +16,8 @@ namespace PeacePark
             { "놀이터", new[] { "Hopscotch", "PocketKites", "Playground" } },
             { "사막", new[] { "Desert", "SandstoneSteps" } },
             { "시계탑 광장", new[] { "Christmas", "SnowglobeBells" } },
-            { "놀이공원", new[] { "CarouselWaltz", "RibbonParade", "LanternWheel" } }
+            { "놀이공원", new[] { "CarouselWaltz", "RibbonParade", "LanternWheel" } },
+            { "수영장", new[] { "DaisyPath", "FernWhistle" } }
         };
         readonly Dictionary<string, int> nextTrack = new Dictionary<string, int>();
         readonly AudioSource[] sources = new AudioSource[2];

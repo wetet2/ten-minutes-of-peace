@@ -30,50 +30,52 @@ namespace PeacePark
             new Vector4(.81f, .508f, .36f, .225f)
         };
 
-        RectTransform canvasRect, content, venueChoices;
-        RawImage meadow, venueBackdrop;
+        ParkPlayground park;
+        RectTransform canvasRect, content, homeHeading, homeModes, venueChoices;
+        RawImage meadow;
         Text wordmark;
         Text tagline;
         readonly RawImage[] animals = new RawImage[AnimalNames.Length];
         readonly RawImage[] groundShadows = new RawImage[AnimalNames.Length];
         ModeButton host, coloring;
         Button venueBack;
+        RawImage backShadow;
         Text venueHeading, venueBackLabel;
         RectTransform backArrow;
         VenueTile[] venueTiles;
         Sprite buttonSurface, venueSurface;
-        Texture2D buttonTexture, shadowTexture, venueTexture, backdropTexture;
+        Texture2D buttonTexture, shadowTexture, venueTexture;
         Rect previousArea;
         Vector2Int previousScreen;
 
         internal void Build(ParkPlayground park)
         {
+            this.park = park;
             var canvas = gameObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             gameObject.AddComponent<GraphicRaycaster>();
             canvasRect = (RectTransform)transform;
             meadow = Art("Park Illustration", canvasRect, "Meadow");
-            venueBackdrop = Child("Place Picker Backdrop", canvasRect).gameObject.AddComponent<RawImage>();
-            venueBackdrop.texture = backdropTexture = CreateVenueBackdrop();
-            venueBackdrop.raycastTarget = false;
-            venueBackdrop.gameObject.SetActive(false);
             content = Child("Safe Area", canvasRect);
-            wordmark = Label("App Title", content, ParkLanguage.Title, ParkFonts.Bold);
+            homeHeading = Child("Start Heading", content);
+            wordmark = Label("App Title", homeHeading, ParkLanguage.Title, ParkFonts.Bold);
             wordmark.resizeTextForBestFit = true;
             wordmark.resizeTextMinSize = 10;
             wordmark.verticalOverflow = VerticalWrapMode.Truncate;
-            tagline = Label("Tagline", content, "애들아 놀아라. 아빠 10분만 쉰다", ParkFonts.Bold);
+            tagline = Label("Tagline", homeHeading, "애들아 놀아라. 아빠 10분만 쉰다", ParkFonts.Bold);
             tagline.verticalOverflow = VerticalWrapMode.Truncate;
             shadowTexture = CreateGroundShadow();
             for (int i = 0; i < groundShadows.Length; i++)
             {
                 var shadowImage = Child(AnimalNames[i] + " Ground Shadow", content).gameObject.AddComponent<RawImage>();
                 shadowImage.texture = shadowTexture;
+                shadowImage.color = new Color(1, 1, 1, 68f / 255f);
                 shadowImage.raycastTarget = false;
                 groundShadows[i] = shadowImage;
             }
             foreach (int index in new[] { 0, 1, 3, 4, 2 })
                 animals[index] = Art(AnimalNames[index], content, AnimalNames[index]);
+            homeModes = Child("Start Actions", content);
             buttonSurface = CreateButtonSurface();
             host = new ModeButton(this, "놀이 공간 열기", "이 기기에서 공간을 열어요", "Gate",
                 new Color32(188, 239, 129, 255));
@@ -99,17 +101,23 @@ namespace PeacePark
 
         internal bool IsChoosingVenue => venueChoices.gameObject.activeSelf;
 
-        internal void ShowVenueChoices(bool visible)
+        internal void ShowInGameVenueChoices(bool visible)
         {
-            if (IsChoosingVenue == visible) return;
-            venueChoices.gameObject.SetActive(visible);
-            venueBackdrop.gameObject.SetActive(visible);
-            wordmark.gameObject.SetActive(!visible);
-            tagline.gameObject.SetActive(!visible);
+            meadow.gameObject.SetActive(!visible);
             foreach (var animal in animals) animal.gameObject.SetActive(!visible);
             foreach (var shadow in groundShadows) shadow.gameObject.SetActive(!visible);
-            host.Button.gameObject.SetActive(!visible);
-            coloring.Button.gameObject.SetActive(!visible);
+            SetVisible(visible);
+            if (visible) ShowVenueChoices(true);
+        }
+
+        internal void ShowVenueChoices(bool visible)
+        {
+            for (int i = 0; i < venueTiles.Length; i++)
+                venueTiles[i].SetCurrent(visible && park.IsVenuePickerOpen && i == park.VenueIndex);
+            if (IsChoosingVenue == visible) return;
+            venueChoices.gameObject.SetActive(visible);
+            homeHeading.gameObject.SetActive(!visible);
+            homeModes.gameObject.SetActive(!visible);
             if (EventSystem.current)
             {
                 var selected = visible ? venueTiles[0].Button : host.Button;
@@ -122,8 +130,13 @@ namespace PeacePark
             venueSurface = ParkDialogs.CreateRoundedSurface(out venueTexture);
             venueChoices = Child("Start Venue Tiles", content);
             venueHeading = Label("Venue Heading", venueChoices, "놀이 장소 고르기", ParkFonts.Bold);
+            backShadow = LiftShadow(venueChoices, shadowTexture);
             venueBack = TileButton("뒤로", venueChoices, venueSurface, new Color32(250, 252, 236, 255));
-            venueBack.onClick.AddListener(() => ShowVenueChoices(false));
+            venueBack.onClick.AddListener(() =>
+            {
+                if (park.IsVenuePickerOpen) park.CloseDialog();
+                else ShowVenueChoices(false);
+            });
             var back = (RectTransform)venueBack.transform;
             venueBackLabel = Label("Label", back, "뒤로", ParkFonts.Bold);
             backArrow = Chevron(back, true);
@@ -133,8 +146,12 @@ namespace PeacePark
             {
                 int choice = i;
                 var venue = park.Venues[i];
-                var tile = new VenueTile(venueChoices, venue, covers, venueSurface);
-                tile.Button.onClick.AddListener(() => park.ChooseStartingVenue(choice));
+                var tile = new VenueTile(venueChoices, venue, covers, venueSurface, marksCurrent: true, shadowTexture: shadowTexture);
+                tile.Button.onClick.AddListener(() =>
+                {
+                    if (park.IsVenuePickerOpen) park.SelectVenue(choice);
+                    else park.ChooseStartingVenue(choice);
+                });
                 venueTiles[i] = tile;
             }
             venueChoices.gameObject.SetActive(false);
@@ -180,7 +197,6 @@ namespace PeacePark
             float coverWidth = Mathf.Max(screen.x, screen.y * ratio);
             float coverHeight = coverWidth / ratio;
             Place(meadow.rectTransform, new Rect((screen.x - coverWidth) / 2, (screen.y - coverHeight) / 2, coverWidth, coverHeight));
-            Place(venueBackdrop.rectTransform, new Rect(0, 0, screen.x, screen.y));
             Place(content, new Rect(area.xMin, screen.y - area.yMax, area.width, area.height));
             float height = area.height;
             float width = Mathf.Min(area.width, height * 2f);
@@ -213,7 +229,7 @@ namespace PeacePark
             float buttonHeight = height * (portrait ? .093f : .136f);
             float buttonWidth = portrait ? Mathf.Min(width * .86f, height * .47f)
                 : (Mathf.Min(width * .91f, height * (ParkLanguage.IsKorean ? .836f : 1.13f)) - gap) / 2;
-            float buttonTop = height * (portrait ? .746f : .812f);
+            float buttonTop = height * (portrait ? .746f : .799f);
             float buttonLeft = center - (portrait ? buttonWidth : buttonWidth * 2 + gap) / 2;
             host.Layout(new Rect(buttonLeft, buttonTop, buttonWidth, buttonHeight));
             coloring.Layout(new Rect(portrait ? buttonLeft : buttonLeft + buttonWidth + gap,
@@ -224,32 +240,36 @@ namespace PeacePark
         void LayoutVenueChoices(float left, float width, float height, bool portrait)
         {
             if (venueTiles.Length == 0) return;
-            int columns = Mathf.Min(venueTiles.Length, 3);
+            int columns = VenueColumns(venueTiles.Length);
             int rows = (venueTiles.Length + columns - 1) / columns;
-            float gridWidth = Mathf.Min(width * .93f, height * 1.33f);
+            float gridWidth = Mathf.Min(width * (portrait ? .93f : .82f), height * 1.10f);
             float center = left + width * .5f;
             float gridLeft = center - gridWidth * .5f;
-            float gap = Mathf.Min(width * .030f, height * .027f);
-            float headingHeight = Mathf.Min(height * .096f, gridWidth * .142f);
-            float headingGap = Mathf.Min(width * .040f, height * .036f);
+            float gap = Mathf.Min(width * .015f, height * .023f);
+            float headingHeight = Mathf.Min(height * .086f, gridWidth * .142f);
+            float headingGap = height * .044f;
             float backWidth = Mathf.Min(gridWidth * .18f, headingHeight * 1.68f);
             float rowGaps = gap * (rows - 1);
             float cellWidth = (gridWidth - gap * (columns - 1)) / columns;
             float cellHeight = Mathf.Min(cellWidth * (portrait ? 1.08f : .99f),
-                (height * .89f - headingHeight - headingGap - rowGaps) / rows);
+                (height * .746f - headingHeight - headingGap - rowGaps) / rows);
             float groupHeight = headingHeight + headingGap + rowGaps + cellHeight * rows;
-            float headingTop = (height - groupHeight) * .5f;
+            float headingTop = portrait ? (height - groupHeight) * .5f : height * .06f;
             float gridTop = headingTop + headingHeight + headingGap;
             FitLabel(venueHeading, new Rect(gridLeft + backWidth, headingTop, gridWidth - 2 * backWidth, headingHeight),
                 headingHeight * .72f);
             float backHeight = headingHeight * .72f;
-            LayoutTileButton(venueBack, new Rect(gridLeft, headingTop + (headingHeight - backHeight) * .5f, backWidth, backHeight));
+            var backBounds = new Rect(gridLeft, headingTop + (headingHeight - backHeight) * .5f, backWidth, backHeight);
+            LayoutTileButton(venueBack, backBounds);
+            PlaceLiftShadow(backShadow, backBounds, backHeight * .55f);
             venueBack.image.pixelsPerUnitMultiplier = 64f / backHeight;
             FitLabel(venueBackLabel, new Rect(backWidth * .25f, 0, backWidth * .65f, backHeight), backHeight * .40f);
             float backIcon = Mathf.Min(backWidth * .17f, backHeight * .32f);
             Place(backArrow, new Rect(backWidth * .13f, (backHeight - backIcon) * .5f, backIcon, backIcon));
             LayoutVenueTiles(venueTiles, columns, new Vector2(center, gridTop), new Vector2(cellWidth, cellHeight), gap);
         }
+
+        internal static int VenueColumns(int count) => Mathf.Min(count, count <= 6 ? 3 : 4);
 
         internal static void LayoutVenueTiles(VenueTile[] tiles, int columns, Vector2 start, Vector2 cell, float gap)
         {
@@ -307,15 +327,17 @@ namespace PeacePark
         {
             static readonly Color Paper = new Color32(255, 253, 241, 255);
             public readonly Button Button;
-            readonly RawImage preview;
+            readonly RawImage preview, shadow;
             readonly Text title;
             readonly Image frame, caption, currentMark;
             readonly RectTransform arrow;
             readonly Rect source = new Rect(0, 0, 1, 1);
             readonly float focusY = .5f;
 
-            public VenueTile(RectTransform parent, ParkVenue venue, Texture2D covers, Sprite surface, bool marksCurrent = false)
+            public VenueTile(RectTransform parent, ParkVenue venue, Texture2D covers, Sprite surface,
+                bool marksCurrent = false, Texture2D shadowTexture = null)
             {
+                if (shadowTexture) shadow = LiftShadow(parent, shadowTexture);
                 Button = TileButton(venue.Name, parent, surface, Paper);
                 var root = (RectTransform)Button.transform;
                 frame = Child("Artwork Frame", root).gameObject.AddComponent<Image>();
@@ -360,6 +382,7 @@ namespace PeacePark
             public void Layout(Rect bounds)
             {
                 LayoutTileButton(Button, bounds);
+                if (shadow) PlaceLiftShadow(shadow, bounds, bounds.height * .22f);
                 float border = Mathf.Max(2, bounds.height * .014f);
                 float w = bounds.width - 2 * border, h = bounds.height - 2 * border;
                 Place(frame.rectTransform, new Rect(border, border, w, h));
@@ -399,12 +422,13 @@ namespace PeacePark
         {
             public readonly Button Button;
             readonly Image surface;
-            readonly RawImage icon;
+            readonly RawImage icon, shadow;
             readonly Text title, description;
 
             public ModeButton(ParkWelcome welcome, string text, string detail, string asset, Color color)
             {
-                var root = Child(text, welcome.content);
+                shadow = LiftShadow(welcome.homeModes, welcome.shadowTexture);
+                var root = Child(text, welcome.homeModes);
                 surface = root.gameObject.AddComponent<Image>();
                 surface.sprite = welcome.buttonSurface;
                 surface.type = Image.Type.Sliced;
@@ -427,6 +451,7 @@ namespace PeacePark
                 Place(surface.rectTransform, bounds);
                 surface.pixelsPerUnitMultiplier = 144f / bounds.height;
                 float w = bounds.width, h = bounds.height;
+                PlaceLiftShadow(shadow, bounds, h * .58f);
                 Fit(icon, new Rect(w * .062f, h * .13f, w * .275f, h * .67f));
                 Place(title.rectTransform, new Rect(w * .355f, h * .128f, w * .59f, h * .39f));
                 Place(description.rectTransform, new Rect(w * .355f, h * .52f, w * .59f, h * .25f));
@@ -455,6 +480,21 @@ namespace PeacePark
             image.raycastTarget = false;
             image.enabled = image.texture != null;
             return image;
+        }
+
+        static RawImage LiftShadow(RectTransform parent, Texture2D texture)
+        {
+            var shadow = Child("Lift Shadow", parent).gameObject.AddComponent<RawImage>();
+            shadow.texture = texture;
+            shadow.color = new Color(1, 1, 1, .55f);
+            shadow.raycastTarget = false;
+            return shadow;
+        }
+
+        static void PlaceLiftShadow(RawImage shadow, Rect bounds, float height)
+        {
+            Place(shadow.rectTransform, new Rect(bounds.x - bounds.width * .04f,
+                bounds.yMax - height * .23f, bounds.width * 1.08f, height));
         }
 
         internal static Text Label(string name, RectTransform parent, string text, Font font, TextAnchor alignment = TextAnchor.MiddleCenter)
@@ -516,7 +556,7 @@ namespace PeacePark
         {
             const int size = 64;
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) {
-                name = "Soft grass shadow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
+                name = "Soft drop shadow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
             };
             var pixels = new Color32[size * size];
             for (int y = 0; y < size; y++)
@@ -524,23 +564,8 @@ namespace PeacePark
             {
                 var offset = new Vector2((x + .5f) / size * 2 - 1, (y + .5f) / size * 2 - 1);
                 float alpha = Mathf.Clamp01(1 - offset.sqrMagnitude);
-                pixels[y * size + x] = new Color32(35, 58, 17, (byte)(68 * alpha * alpha));
+                pixels[y * size + x] = new Color32(35, 58, 17, (byte)(255 * alpha * alpha));
             }
-            texture.SetPixels32(pixels);
-            texture.Apply(false, true);
-            return texture;
-        }
-
-        static Texture2D CreateVenueBackdrop()
-        {
-            const int height = 96;
-            var texture = new Texture2D(1, height, TextureFormat.RGBA32, false) {
-                name = "Place picker paper", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
-            };
-            Color grass = new Color32(222, 237, 207, 236);
-            Color cream = new Color32(255, 250, 231, 248);
-            var pixels = new Color32[height];
-            for (int y = 0; y < height; y++) pixels[y] = Color.Lerp(grass, cream, y / (float)(height - 1));
             texture.SetPixels32(pixels);
             texture.Apply(false, true);
             return texture;
@@ -553,7 +578,6 @@ namespace PeacePark
             Destroy(shadowTexture);
             Destroy(venueSurface);
             Destroy(venueTexture);
-            Destroy(backdropTexture);
         }
     }
 }

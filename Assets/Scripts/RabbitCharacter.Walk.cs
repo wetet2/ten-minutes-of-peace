@@ -7,6 +7,7 @@ namespace PeacePark
     {
         const float Turn = Mathf.PI * 2;
         const float StrideScale = 1.16f;
+        const float JogStrideScale = 2.20f;
         static readonly Vector3 BodyRest = new Vector3(0, 1.68f, 0);
         static readonly Vector3 LeftHipRest = new Vector3(-.32f, RabbitMesh.HipHeight, 0);
         static readonly Vector3 RightHipRest = new Vector3(.32f, RabbitMesh.HipHeight, 0);
@@ -103,13 +104,15 @@ namespace PeacePark
             rightSole = new FootSole(feet[1]);
         }
 
-        internal float AdvanceWalkPhase(float phase, float worldDistance)
+        float StrideLength(float jog) => gait.Stride * Mathf.Lerp(1, JogStrideScale, jog);
+
+        internal float AdvanceWalkPhase(float phase, float worldDistance, float jog = 0)
         {
-            float stride = gait.Stride * transform.lossyScale.x;
+            float stride = StrideLength(jog) * transform.lossyScale.x;
             return Mathf.Repeat(phase + Turn * worldDistance / stride, Turn);
         }
 
-        void WalkPose(float phase, float strength = 1)
+        void WalkPose(float phase, float strength = 1, float jog = 0)
         {
             float cycle = Mathf.Repeat(phase, Turn) / Turn;
             if (correctiveReady)
@@ -119,47 +122,53 @@ namespace PeacePark
             }
 
             // Absorb each landing, then extend over the planted foot before a brief lift-off.
+            float stride = StrideLength(jog);
+            float stance = gait.Stance * Mathf.Lerp(1, .79f, jog);
+            float lean = gait.Lean + 7.5f * jog;
             float halfStep = Mathf.Repeat(cycle, .5f);
             float beat = Turn * (halfStep * 2 - .17f);
-            float rebound = gait.Rebound * strength;
+            float rebound = gait.Rebound * (1 + .27f * jog) * strength;
             float rise = rebound * (.08f - .5f * Mathf.Cos(beat));
             float headRise = rebound * (.07f - .39f * Mathf.Cos(beat - gait.HeadLag * .58f));
-            float air = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(gait.Stance, .5f, halfStep));
-            model.localPosition += Vector3.up * ((.5f - gait.Stance) * .83f * air * air * strength);
+            float air = Mathf.Sin(Mathf.PI * Mathf.InverseLerp(stance, .5f, halfStep));
+            model.localPosition += Vector3.up * ((.5f - stance) * .83f * air * air * strength);
 
-            float midStance = phase - Mathf.PI * gait.Stance;
+            float midStance = phase - Mathf.PI * stance;
             float weightShift = Mathf.Cos(midStance);
             float counterSwing = Mathf.Cos(phase - .3f) * strength;
             float roll = gait.Sway * weightShift * strength;
             float delayedBeat = Mathf.Sin(beat - gait.HeadLag * .58f) * strength;
             body.localPosition += new Vector3(-.009f * roll, rise, 0);
-            body.localRotation = Quaternion.Euler(-gait.Lean * strength,
+            body.localRotation = Quaternion.Euler(-lean * strength,
                 gait.Twist * counterSwing, roll);
             head.localPosition += new Vector3(-.005f * roll, headRise, 0);
-            head.localRotation = Quaternion.Euler(gait.HeadNod * delayedBeat - gait.Lean * .21f * strength,
+            head.localRotation = Quaternion.Euler(gait.HeadNod * delayedBeat - lean * .21f * strength,
                 gait.Twist * .36f * Mathf.Cos(phase - gait.HeadLag) * strength, -roll * .6f);
             leftShoulder.localPosition += Vector3.up * (rise - .006f * roll);
             rightShoulder.localPosition += Vector3.up * (rise + .006f * roll);
-            leftArm.localRotation = Quaternion.Euler(-gait.ArmSwing * counterSwing, 0, 40);
-            rightArm.localRotation = Quaternion.Euler(gait.ArmSwing * counterSwing, 0, -40);
+            float armSwing = gait.ArmSwing * (1 + .40f * jog) * counterSwing;
+            leftArm.localRotation = Quaternion.Euler(-armSwing, 0, 40);
+            rightArm.localRotation = Quaternion.Euler(armSwing, 0, -40);
 
-            PoseFoot(leftLeg, LeftHipRest, leftSole, cycle, strength);
-            PoseFoot(rightLeg, RightHipRest, rightSole, Mathf.Repeat(cycle + .5f, 1), strength);
+            float lift = gait.Lift * (1 + .36f * jog);
+            PoseFoot(leftLeg, LeftHipRest, leftSole, cycle, strength, stride, stance, lift);
+            PoseFoot(rightLeg, RightHipRest, rightSole, Mathf.Repeat(cycle + .5f, 1), strength, stride, stance, lift);
         }
 
-        void PoseFoot(Transform leg, Vector3 hip, FootSole sole, float cycle, float strength)
+        void PoseFoot(Transform leg, Vector3 hip, FootSole sole, float cycle, float strength,
+            float stride, float stance, float swingHeight)
         {
-            float contactSpan = gait.Stride * gait.Stance;
-            float foreAft = gait.Stride * cycle - contactSpan * .5f;
+            float contactSpan = stride * stance;
+            float foreAft = stride * cycle - contactSpan * .5f;
             float lift = 0;
-            if (cycle > gait.Stance)
+            if (cycle > stance)
             {
-                float swing = (cycle - gait.Stance) / (1 - gait.Stance);
+                float swing = (cycle - stance) / (1 - stance);
                 // Match stance velocity at toe-off and landing so the transfer does not jerk.
                 foreAft = contactSpan * (.5f - Mathf.SmoothStep(0, 1, swing))
-                    + gait.Stride * (1 - gait.Stance) * swing * (1 - swing) * (1 - 2 * swing);
+                    + stride * (1 - stance) * swing * (1 - swing) * (1 - 2 * swing);
                 float arch = Mathf.Sin(Mathf.PI * swing);
-                lift = gait.Lift * arch * arch;
+                lift = swingHeight * arch * arch;
             }
 
             const float soleCenterZ = -.14f;

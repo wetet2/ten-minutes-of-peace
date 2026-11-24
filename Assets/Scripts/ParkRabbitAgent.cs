@@ -10,7 +10,7 @@ namespace PeacePark
     }
 
     internal enum ParkAnimalAction { None, Wheel, Train, Carousel, Slide, Hop, Dance, Trampoline, Seesaw, Roundabout,
-        StumpHop, WoodenBridge, Zipline, SandSled }
+        StumpHop, WoodenBridge, Zipline, SandSled, Deer, Tube, Swim, WaterSlide, Camp, Pole, Skate, BlowBubbles, ResortBridge, Sunbed }
 
     public enum ParkRabbitState { OpeningDoor,WalkingOut,Waving,Wandering }
 
@@ -30,16 +30,25 @@ namespace PeacePark
         float elapsed,phase,pause,blocked,wanderSpeed;
         Vector3 destination;
         bool leavingEntrance;
-        internal enum Activity { None, Stroll, Hop, Dance, ApproachSlide, Climb, Sit, Slide, LeaveSlide }
+        internal enum Activity { None, Stroll, Hop, Dance, BlowBubbles, ApproachSlide, Climb, Sit, Slide, LeaveSlide }
         internal Activity CurrentActivity {get;private set;}
         ParkSlide slide;
         IParkAnimalRide ride;
         Vector3 plazaDestination;
         ParkAnimalAction pendingAction;
         float actionRetry;
+        float deerRouteRetry;
+        float groundTimeBalance;
+        float parkPlayTimeBudget,parkDanceTimeBalance;
+        bool rideActivityStarted;
         Vector3[] rideRoute;
         int rideWaypoint;
+        bool jogToRide;
+        bool automaticRideApproach;
+        float rideApproachJog;
         internal ParkAnimalAction PendingAction => pendingAction;
+        internal bool IsUsingRide => (ride!=null&&rideActivityStarted)||CurrentActivity>=Activity.Climb;
+        internal bool ShouldExtendAutomaticRide => automaticRideApproach&&groundTimeBalance<-.75f;
         internal bool CanJoinSeesaw=>State==ParkRabbitState.Wandering&&!leavingEntrance&&ride==null&&
             CurrentActivity==Activity.None&&(pendingAction==ParkAnimalAction.None||pendingAction==ParkAnimalAction.Seesaw);
         internal ParkAnimalAction ActiveAction => ride?.Action ?? (CurrentActivity switch
@@ -47,21 +56,29 @@ namespace PeacePark
             Activity.None or Activity.Stroll => ParkAnimalAction.None,
             Activity.Hop => ParkAnimalAction.Hop,
             Activity.Dance => ParkAnimalAction.Dance,
+            Activity.BlowBubbles => ParkAnimalAction.BlowBubbles,
             _ => ParkAnimalAction.Slide
         });
         internal bool UseContactShadow {get;set;}
+        internal bool IsHiddenForRide {get;private set;}
         MeshRenderer contactShadow;
         MaterialPropertyBlock shadowProperties;
+        float lifetimeVisibility=1,rideVisibility=1;
         static Material contactShadowMaterial;
         static Mesh contactShadowMesh;
         static readonly int ShadowOpacity=Shader.PropertyToID("_Opacity");
         float activityTime,activityDelay;
-        const float WaveDuration=1.65f;
+        internal const float WaveDuration=1.65f;
         internal const float WanderSpeed=.70f;
         internal const float AnimalSpacing=.82f;
         static readonly float[] DepartureAngles={-84,-56,-28,0,28,56,84};
         static readonly float[] AvoidanceAngles={30,-30,60,-60,90,-90,120,-120,150,-150,180};
+        const float GroundTimeDebtLimit=12f;
+        const float HopDuration=.9f,DanceDuration=2.15f;
+        const float BubbleDuration=1.95f;
+        static readonly float[] BubblePuffTimes={.36f,.94f,1.52f};
         internal const float SizeMultiplier=1.3f;
+        bool UsesParkActivityMix=>park.ThemeName=="공원";
 
         public void Initialize(ParkPlayground owner,ParkHouse source,int houseIndex,int id,byte[] front,byte[] back,bool raw=false,AnimalKind kind=AnimalKind.Rabbit)
         {
@@ -73,7 +90,6 @@ namespace PeacePark
             transform.SetPositionAndRotation(house.Inside.position,house.Facing);
             transform.localScale=Vector3.one*(previousScale*SizeMultiplier);
             Character.PlayIdlePose();Character.Skin.enabled=false;State=ParkRabbitState.OpeningDoor;
-            activityDelay=park.Carousel?Range(2,5):Range(8,17);
             UseContactShadow=Application.platform==RuntimePlatform.Android;
         }
 
@@ -105,6 +121,7 @@ namespace PeacePark
                 renderer.receiveShadows=false;
                 Character.Skin.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
                 contactShadow=renderer;
+                ApplyVisibility();
             }
             catch
             {
@@ -130,6 +147,9 @@ namespace PeacePark
             contactShadow.enabled=Character.Skin.enabled&&CurrentActivity<Activity.Climb&&
                 !(ride is ParkSeesaw&&transform.position.y>park.GroundHeight+.05f)&&
                 !(ride is ParkForestRide forestRide&&forestRide.IsAirborne)&&
+                !((ride is ParkResortRiver or ParkResortSwim)&&transform.position.y<ParkResortRiver.WaterHeight)&&
+                !(ride is ParkResortSlide resortSlide&&resortSlide.ShouldHideShadow(this))&&
+                !(ride is ParkPoleRide&&transform.position.y>park.SurfaceHeight(transform.position)+.02f)&&
                 !(State==ParkRabbitState.WalkingOut&&
                     ((house.EntranceSlide&&elapsed<house.ExitDuration-ParkSlide.ExitWalkSeconds)||
                     (house.EntrancePole&&transform.position.y>house.EntrancePole.position.y+.02f)));
@@ -137,18 +157,39 @@ namespace PeacePark
             var surface=transform.position;
             if(ride is ParkTrampoline trampoline)surface.y=Mathf.Min(surface.y,trampoline.MatSurfaceY);
             if(ride is ParkRoundaboutRide roundabout)surface.y=roundabout.SurfaceY(surface);
-            if(ride is ParkSandSled)surface.y=park.SurfaceHeight(surface);
+            if(ride is ParkIceRink rink&&rink.IsOnIce(surface))surface.y=rink.SurfaceY;
+            if(ride is ParkSandSled or ParkVillageDeer or ParkDesertCamp)surface.y=park.SurfaceHeight(surface);
             contactShadow.transform.SetPositionAndRotation(surface+Vector3.up*.012f,
                 Quaternion.Euler(90,transform.eulerAngles.y,0));
         }
 
         internal void SetVisibility(float visibility)
         {
+            lifetimeVisibility=visibility;
+            ApplyVisibility();
+        }
+
+        internal void SetRideVisibility(float visibility)
+        {
+            rideVisibility=visibility;
+            ApplyVisibility();
+        }
+
+        void ApplyVisibility()
+        {
+            float visibility=lifetimeVisibility*rideVisibility;
             Character.SetVisibility(visibility);
             if(!contactShadow)return;
             shadowProperties??=new MaterialPropertyBlock();
             shadowProperties.SetFloat(ShadowOpacity,visibility);
             contactShadow.SetPropertyBlock(shadowProperties);
+        }
+
+        internal void SetRideHidden(bool hidden)
+        {
+            IsHiddenForRide=hidden;
+            Character.Skin.enabled=!hidden;
+            if(contactShadow)UpdateContactShadow();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -161,7 +202,11 @@ namespace PeacePark
         }
         public void Advance(float deltaTime)
         {
-            if(ride!=null)return;
+            if(ride!=null)
+            {
+                AdvanceActivityClock(deltaTime);
+                return;
+            }
             elapsed+=deltaTime;
             if(State==ParkRabbitState.OpeningDoor)
             {
@@ -172,7 +217,8 @@ namespace PeacePark
             {
                 ExitedThroughOpenDoor&=house.DoorFraction>=.999f;
                 if(house.EntranceSlide)AdvanceSlideEntrance();
-                else if(house.EntrancePole)AdvancePoleEntrance();
+                else if(house.PoleRide){AdvancePoleEntrance();return;}
+                else if(house.CampTent)AdvanceTentArrival(deltaTime);
                 else WalkTo(house.ExitPosition(elapsed/house.ExitDuration),cadenceScale:house.ExitTerrain ? .74f : 1);
                 if(elapsed>=house.ExitDuration)
                 {var p=transform.position;p.y=park.SurfaceHeight(p);transform.position=p;State=ParkRabbitState.Waving;elapsed=0;WaveCount++;house.CloseAfterExit();}
@@ -181,19 +227,35 @@ namespace PeacePark
             {
                 Character.PlayWavePose(elapsed/WaveDuration);
                 if(elapsed<WaveDuration)return;
-                State=ParkRabbitState.Wandering;
-                elapsed=0;
-                phase=0;
-                wanderSpeed=0;
-                leavingEntrance=true;
-                ChooseDeparture();
+                BeginWanderingAfterGreeting();
             }
             else if(State==ParkRabbitState.Wandering)
             {
+                if(!leavingEntrance)AdvanceActivityClock(deltaTime);
                 AdvanceRequestedAction(deltaTime);
                 if(ride!=null)return;
                 if(!AdvanceActivity(deltaTime))Wander(deltaTime);
             }
+        }
+
+        void BeginWanderingAfterGreeting()
+        {
+            State=ParkRabbitState.Wandering;
+            elapsed=phase=wanderSpeed=0;
+            leavingEntrance=true;
+            activityDelay=Range(1.15f,2.2f);
+            ChooseDeparture();
+        }
+        void AdvanceTentArrival(float dt)
+        {
+            float progress=elapsed/house.ExitDuration;
+            var point=house.ExitPosition(progress);
+            var heading=Vector3.ProjectOnPlane(point-transform.position,Vector3.up);
+            if(heading.sqrMagnitude>.000001f)
+                transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(-heading),dt*300);
+            WalkTo(point);
+            if(progress<.88f)
+                house.CampTent.FitUnderTent(Character,1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(.56f,.88f,progress)));
         }
         void AdvanceSlideEntrance()
         {
@@ -226,52 +288,26 @@ namespace PeacePark
 
         void AdvancePoleEntrance()
         {
-            var pole=house.EntrancePole.position;
-            var feetAtBase=pole+house.transform.forward*.42f;
-            var feetAtTop=feetAtBase;
-            feetAtTop.y=house.Threshold.position.y;
-            float rideTime=elapsed-ParkHouse.PoleEntrySeconds;
-            if(rideTime<0)
+            var poleRide=house.PoleRide;
+            float waveTime=elapsed-ParkPoleRide.ArrivalWalkSeconds;
+            if(waveTime<0)
             {
-                float approach=Mathf.Clamp01(elapsed/ParkHouse.PoleEntrySeconds);
-                var point=Vector3.Lerp(house.Inside.position,feetAtTop,approach);
                 transform.rotation=house.Facing;
-                if(approach<.66f)WalkTo(point);
-                else
-                {
-                    transform.position=point;
-                    Character.PlayPolePose(pole,Mathf.SmoothStep(0,1,Mathf.InverseLerp(.66f,1,approach)));
-                }
+                WalkTo(Vector3.Lerp(house.Inside.position,poleRide.WaveSpot,elapsed/ParkPoleRide.ArrivalWalkSeconds));
                 return;
             }
-            if(rideTime<ParkHouse.PoleDescentSeconds)
+            if(WaveCount==0)WaveCount++;
+            if(waveTime<WaveDuration)
             {
-                float t=rideTime/ParkHouse.PoleDescentSeconds;
-                float descent=t-.115f*Mathf.Sin(2*Mathf.PI*t);
-                var turn=Quaternion.AngleAxis(Mathf.SmoothStep(0,360,t),Vector3.up);
-                var position=pole+turn*(feetAtBase-pole);
-                position.y=Mathf.Lerp(feetAtTop.y,feetAtBase.y,descent);
-                transform.SetPositionAndRotation(position,turn*house.Facing);
-                Character.PlayPolePose(pole,1);
+                transform.SetPositionAndRotation(poleRide.WaveSpot,house.Facing);
+                Character.PlayWavePose(waveTime/WaveDuration);
                 return;
             }
-
-            // Step around the pole while letting go, then walk out to the greeting spot.
-            float releaseTime=rideTime-ParkHouse.PoleDescentSeconds;
-            var stepAside=feetAtBase-house.transform.right*.51f;
-            var direction=house.Welcome.position-stepAside;
-            direction.y=0;
-            var facing=Quaternion.LookRotation(-direction);
-            if(releaseTime<ParkHouse.PoleReleaseSeconds)
-            {
-                float release=Mathf.SmoothStep(0,1,releaseTime/ParkHouse.PoleReleaseSeconds);
-                transform.SetPositionAndRotation(Vector3.Lerp(feetAtBase,stepAside,release),
-                    Quaternion.Slerp(house.Facing,facing,release));
-                Character.PlayPolePose(pole,1-release);
-                return;
-            }
-            transform.rotation=facing;
-            WalkTo(Vector3.Lerp(stepAside,house.Welcome.position,(releaseTime-ParkHouse.PoleReleaseSeconds)/ParkHouse.PoleWalkSeconds));
+            poleRide.AdvanceSlide(this,waveTime-WaveDuration);
+            if(elapsed<house.ExitDuration)return;
+            GroundAtCurrentPosition();
+            house.CloseAfterExit();
+            BeginWanderingAfterGreeting();
         }
 
         void Ride(ParkSlide course,float progress)
@@ -281,14 +317,14 @@ namespace PeacePark
             Character.PlaySlidePose(1);
         }
 
-        void WalkTo(Vector3 position,float cadenceScale=1f)
+        void WalkTo(Vector3 position,float cadenceScale=1f,float jog=0)
         {
             var step=position-transform.position;
             float distance=new Vector2(step.x,step.z).magnitude;
             transform.position=position;
-            phase=Character.AdvanceWalkPhase(phase,distance*cadenceScale);
+            phase=Character.AdvanceWalkPhase(phase,distance*cadenceScale,jog);
             WalkedDistance+=distance;
-            Character.PlayWalkingPose(phase);
+            Character.PlayWalkingPose(phase,1,jog);
         }
 
         float Range(float min,float max)=>Mathf.Lerp(min,max,(float)random.NextDouble());
@@ -305,46 +341,27 @@ namespace PeacePark
             gameObject.SetActive(true);
         }
 
-        internal void ChangeVenue(ParkHouse entrance,int index)
+        internal void ChangeVenue(ParkHouse entrance,int index,Vector3 position)
         {
-            pendingAction=ParkAnimalAction.None;
-            rideRoute=null;
-            if(CurrentActivity!=Activity.None)FinishActivity();
-            if(park.Carousel)activityDelay=Range(2,5);
-            float exitProgress=elapsed/house.ExitDuration;
-            bool changedEntranceType=(bool)house.EntranceSlide!=(bool)entrance.EntranceSlide||
-                (bool)house.EntrancePole!=(bool)entrance.EntrancePole;
             house=entrance;HouseIndex=index;
-            switch(State)
+            groundTimeBalance=0;
+            parkPlayTimeBudget=parkDanceTimeBalance=0;
+            rideActivityStarted=false;
+            if(State==ParkRabbitState.OpeningDoor)
             {
-                case ParkRabbitState.OpeningDoor:
-                    transform.SetPositionAndRotation(house.Inside.position,house.Facing);
-                    break;
-                case ParkRabbitState.WalkingOut:
-                    if(changedEntranceType)
-                    {
-                        RestartEmergence(entrance,index);
-                        break;
-                    }
-                    elapsed=exitProgress*house.ExitDuration;
-                    if(house.EntranceSlide)AdvanceSlideEntrance();
-                    else if(house.EntrancePole)AdvancePoleEntrance();
-                    else transform.SetPositionAndRotation(house.ExitPosition(exitProgress),house.Facing);
-                    break;
-                case ParkRabbitState.Waving:
-                    transform.SetPositionAndRotation(house.Welcome.position,house.Facing);
-                    GroundAtCurrentPosition();
-                    break;
-                case ParkRabbitState.Wandering:
-                    var p=transform.position;
-                    p.x=Mathf.Clamp(p.x,park.WalkArea.xMin,park.WalkArea.xMax);
-                    p.z=Mathf.Clamp(p.z,park.WalkArea.yMin,park.WalkArea.yMax);
-                    if(!park.IsSceneryClear(p))p=house.Welcome.position;
-                    transform.position=p;
-                    GroundAtCurrentPosition();
-                    ChooseDestination();
-                    break;
+                transform.SetPositionAndRotation(house.Inside.position,house.Facing);
+                return;
             }
+            ride?.Release(this);
+            ride=null;
+            pendingAction=ParkAnimalAction.None;
+            State=ParkRabbitState.Wandering;
+            elapsed=phase=pause=wanderSpeed=0;
+            leavingEntrance=false;
+            position.y=park.SurfaceHeight(position);
+            transform.SetPositionAndRotation(position,Quaternion.Euler(0,Range(0,360),0));
+            FinishActivity();
+            activityDelay=Range(.8f,2.2f);
         }
 
         // The first walk starts normally. Optional activities are scheduled later during roaming.
@@ -356,46 +373,42 @@ namespace PeacePark
                 FinishActivity();
                 return false;
             }
+            if(CurrentActivity==Activity.Stroll&&groundTimeBalance<=0)FinishActivity();
             if(CurrentActivity==Activity.None)
             {
                 if(leavingEntrance||pendingAction!=ParkAnimalAction.None)return false;
                 activityDelay-=dt;
                 if(activityDelay>0)return false;
-                if(park.Carousel)
-                {
-                    activityDelay=Range(4,7);
-                    if(!park.CanFollowAnimal(this))return false;
-                    var rides=park.AnimalActions;
-                    int choice=random.Next(rides.Length+1);
-                    if(choice<rides.Length&&TryStartAction(rides[choice]))return true;
-                    StartPlazaStroll();
-                    return false;
-                }
-                if(park.Trampoline&&park.CanFollowAnimal(this))
-                {
-                    activityDelay=Range(4,7);
-                    int choice=random.Next(4);
-                    if(choice==0&&TryStartAction(ParkAnimalAction.Seesaw))return true;
-                    if(choice==1&&TryStartAction(ParkAnimalAction.Trampoline))return true;
-                    if(choice==2&&TryStartAction(ParkAnimalAction.Roundabout))return true;
-                }
-                if(!park.IsClear(position,this,1.2f))return false;
-                activityDelay=Range(4,7);
-                var candidate=park.Slide;
-                if(candidate&&Vector3.Distance(position,candidate.Approach)<6&&TryStartSlide())return false;
-                StartActivity(random.Next(2)==0?Activity.Hop:Activity.Dance);
+                if(TryStartAutomaticActivity())return true;
+                if(CurrentActivity==Activity.None)return false;
             }
 
+            float previousTime=activityTime;
             activityTime+=dt;
+            if(UsesParkActivityMix&&(CurrentActivity is Activity.Hop or Activity.Dance))
+            {
+                parkPlayTimeBudget-=dt;
+                parkDanceTimeBalance+=CurrentActivity==Activity.Dance?dt:-dt;
+            }
             switch(CurrentActivity)
             {
                 case Activity.Hop:
-                    Character.PlayHopPose(Mathf.Clamp01(activityTime/.9f));
-                    if(activityTime>=.9f)FinishActivity();
+                    Character.PlayHopPose(Mathf.Clamp01(activityTime/HopDuration));
+                    if(activityTime>=HopDuration)FinishActivity();
                     return true;
                 case Activity.Dance:
-                    Character.PlayDancePose(Mathf.Clamp01(activityTime/2.15f));
-                    if(activityTime>=2.15f)FinishActivity();
+                    Character.PlayDancePose(Mathf.Clamp01(activityTime/DanceDuration));
+                    if(activityTime>=DanceDuration)FinishActivity();
+                    return true;
+                case Activity.BlowBubbles:
+                    float puff=0;
+                    foreach(float time in BubblePuffTimes)
+                        puff=Mathf.Max(puff,Mathf.SmoothStep(1,0,Mathf.Abs(activityTime-time)/.24f));
+                    Character.PlayBubblePose(puff);
+                    foreach(float time in BubblePuffTimes)
+                        if(previousTime<time&&activityTime>=time)
+                            park.EmitBubbles(Character.BubbleMouth,Character.BubbleDirection);
+                    if(activityTime>=BubbleDuration)FinishActivity();
                     return true;
                 case Activity.ApproachSlide:
                     if(!slide.isActiveAndEnabled||(rideRoute==null&&activityTime>13)){FinishActivity();return false;}
@@ -486,6 +499,9 @@ namespace PeacePark
             slide=candidate;
             rideRoute=route;
             rideWaypoint=0;
+            jogToRide=requested;
+            automaticRideApproach=requested&&pendingAction!=ParkAnimalAction.Slide;
+            rideApproachJog=0;
             destination=entry;
             leavingEntrance=false;
             StartActivity(Activity.ApproachSlide);
@@ -506,7 +522,7 @@ namespace PeacePark
             slide=null;
             rideRoute=null;
             CurrentActivity=Activity.None;
-            activityDelay=Range(9,21);
+            activityDelay=0;
             Character.PlayIdlePose();
             ChooseDestination();
         }
@@ -545,51 +561,132 @@ namespace PeacePark
             if(TryStartAction(pendingAction))pendingAction=ParkAnimalAction.None;
         }
 
+        void AdvanceActivityClock(float dt)
+        {
+            if(UsesParkActivityMix)return;
+            // One share of ground time is balanced against as many ride-time shares as there are actions.
+            // Approaching, waiting, and spontaneous hops or dances belong to the ground time.
+            int actionCount=park.AutomaticAnimalActions.Length;
+            if(actionCount==0)return;
+            if(IsUsingRide)groundTimeBalance+=dt/actionCount;
+            else groundTimeBalance=Mathf.Max(-GroundTimeDebtLimit,groundTimeBalance-dt);
+        }
+
+        bool TryStartAutomaticActivity()
+        {
+            if(!park.CanFollowAnimal(this))return false;
+            if(UsesParkActivityMix)
+            {
+                // Balance actual animation time because a dance lasts longer than a hop.
+                bool dance=parkDanceTimeBalance<=0;
+                float duration=dance?DanceDuration:HopDuration;
+                if(parkPlayTimeBudget>=duration&&park.IsClear(transform.position,this,1.2f))
+                    StartActivity(dance?Activity.Dance:Activity.Hop);
+                return false;
+            }
+            if(groundTimeBalance<=0&&(!park.ResortRiver||!park.ResortRiver.IsOnIsland(transform.position))&&
+                TryStartRandomRide(park.AutomaticAnimalActions))return true;
+
+            if(random.Next(3)!=0&&park.IsClear(transform.position,this,1.2f))
+                StartActivity(random.Next(2)==0?Activity.Hop:Activity.Dance);
+            else
+            {
+                pause=0;
+                activityDelay=groundTimeBalance>0?Mathf.Min(groundTimeBalance,Range(1.15f,2.5f)):Range(.8f,1.7f);
+                if(groundTimeBalance>0&&park.Carousel)StartPlazaStroll();
+            }
+            return false;
+        }
+
+        bool TryStartRandomRide(ParkAnimalAction[] actions)
+        {
+            if(actions.Length==0)return false;
+            int start=random.Next(actions.Length);
+            int stride=random.Next(2)==0?1:actions.Length-1;
+            for(int i=0;i<actions.Length;i++)
+            {
+                var action=actions[(start+i*stride)%actions.Length];
+                if(action==ParkAnimalAction.Train&&(!park.Train||!park.Train.CanAutoBoard))continue;
+                if(action==ParkAnimalAction.Slide&&park.Slide&&park.HasWaitingArrival(park.Slide.Entrance))continue;
+                if(TryAutoRide(action))return true;
+            }
+            return false;
+
+            bool TryAutoRide(ParkAnimalAction action)
+            {
+                foreach(var animal in park.Animals)
+                    if(animal.pendingAction==action&&animal.ride==null&&animal.State==ParkRabbitState.Wandering&&
+                        animal.CurrentActivity==Activity.None&&park.CanFollowAnimal(animal))return false;
+                return TryStartAction(action);
+            }
+        }
+
         bool TryStartAction(ParkAnimalAction action) => action switch
             {
                 ParkAnimalAction.Wheel => park.Wheel&&park.Wheel.TryRequestedRide(this),
                 ParkAnimalAction.Train => park.Train&&park.Train.TryRequestedRide(this),
                 ParkAnimalAction.Carousel => park.Carousel&&park.Carousel.TryRequestedRide(this),
                 ParkAnimalAction.Slide => TryStartSlide(requested:true),
+                ParkAnimalAction.Pole => park.PoleRide&&park.PoleRide.TryQueue(park,this),
                 ParkAnimalAction.Trampoline => park.Trampoline&&park.Trampoline.TryQueue(this),
                 ParkAnimalAction.Seesaw => park.Seesaw&&park.Seesaw.TryPair(park,this),
                 ParkAnimalAction.Roundabout => park.Roundabout&&park.Roundabout.TryQueue(this),
                 ParkAnimalAction.StumpHop or ParkAnimalAction.WoodenBridge or ParkAnimalAction.Zipline => park.TryRequestForestRide(this,action),
                 ParkAnimalAction.SandSled => park.SandSled&&park.SandSled.TryQueue(this),
-                ParkAnimalAction.Hop => StartRequestedGroundAction(Activity.Hop),
-                ParkAnimalAction.Dance => StartRequestedGroundAction(Activity.Dance),
+                ParkAnimalAction.Camp => park.DesertCamp&&park.DesertCamp.TryQueue(park,this),
+                ParkAnimalAction.Deer => park.TryRequestDeerRide(this),
+                ParkAnimalAction.Skate => park.IceRink&&park.IceRink.TryQueue(this),
+                ParkAnimalAction.Tube => park.ResortRiver&&park.ResortRiver.TryQueue(this),
+                ParkAnimalAction.Swim => park.ResortSwim&&park.ResortSwim.TryQueue(park,this),
+                ParkAnimalAction.WaterSlide => park.ResortSlide&&park.ResortSlide.TryQueue(this),
+                ParkAnimalAction.ResortBridge => park.ResortRiver&&park.ResortRiver.TryQueueBridge(this),
+                ParkAnimalAction.Sunbed => park.ResortSunbeds&&park.ResortSunbeds.TryQueue(park,this),
+                ParkAnimalAction.BlowBubbles => TryBlowBubbles(),
                 _ => false
             };
-        bool StartRequestedGroundAction(Activity action)
+
+        bool TryBlowBubbles()
         {
-            if(!park.IsClear(transform.position,this,1.2f))return false;
-            StartActivity(action);
+            if(!UsesParkActivityMix||leavingEntrance)return false;
+            StartActivity(Activity.BlowBubbles);
             return true;
         }
-        internal bool TryReserveRequestedRide(IParkAnimalRide attraction,Vector3 mark)
+        internal bool TryReserveRequestedRide(IParkAnimalRide attraction,Vector3 mark,bool avoidDeer=false)
         {
-            if(!park.TryBuildRidePath(transform.position,mark,out var route))return false;
+            if(!park.TryBuildRidePath(transform.position,mark,out var route,avoidDeer))return false;
             ReserveRide(attraction,route);
             return true;
         }
         internal void ReserveRide(IParkAnimalRide attraction,Vector3[] route)
         {
-            if(pendingAction==attraction.Action)pendingAction=ParkAnimalAction.None;
+            bool requested=pendingAction==attraction.Action;
+            automaticRideApproach=!requested;
+            jogToRide=true;
+            if(requested)pendingAction=ParkAnimalAction.None;
+            rideActivityStarted=false;
             leavingEntrance=false;
             ride=attraction;
             phase=pause=wanderSpeed=0;
+            SetRideRoute(route);
+            deerRouteRetry=0;
+        }
+        internal void SetRideRoute(Vector3[] route)
+        {
             rideRoute=route;
             rideWaypoint=0;
+            rideApproachJog=0;
         }
-        internal bool WalkToRideMark(Vector3 mark,Quaternion facing,float dt,bool keepWalking=false,float speed=1.38f)
+        internal bool WalkToRideMark(Vector3 mark,Quaternion facing,float dt,bool keepWalking=false,float speed=1.38f,
+            float automaticSpeed=4.5f)
         {
+            deerRouteRetry-=dt;
             bool approaching=rideRoute!=null&&rideWaypoint<rideRoute.Length;
             var destination=approaching?rideRoute[rideWaypoint]:mark;
             var target=new Vector3(destination.x,transform.position.y,destination.z);
             var heading=target-transform.position;
             if(heading.sqrMagnitude<.035f*.035f)
             {
-                if(!park.WalkingSegmentClear(transform.position,target))return false;
+                if(!RideStepClear(target,mark))return false;
                 if(approaching)
                 {
                     target.y=park.SurfaceHeight(target);
@@ -598,6 +695,7 @@ namespace PeacePark
                     return false;
                 }
                 transform.rotation=facing;
+                rideApproachJog=0;
                 if(keepWalking)WalkTo(mark);
                 else
                 {
@@ -606,15 +704,44 @@ namespace PeacePark
                 }
                 return true;
             }
-            transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(-heading),dt*310);
-            var next=Vector3.MoveTowards(transform.position,target,dt*speed);
-            if(!park.WalkingSegmentClear(transform.position,next))
+            var facingTarget=Quaternion.LookRotation(-heading);
+            transform.rotation=Quaternion.RotateTowards(transform.rotation,facingTarget,dt*310);
+            if(jogToRide)
             {
+                float turn=1-Mathf.InverseLerp(15,75,Quaternion.Angle(transform.rotation,facingTarget));
+                float room=Mathf.InverseLerp(.22f,approaching?1.0f:1.45f,heading.magnitude);
+                rideApproachJog=Mathf.MoveTowards(rideApproachJog,room*turn,dt*5);
+                float runSpeed=Mathf.Max(3f,speed*1.27f);
+                if(automaticRideApproach)
+                {
+                    // Shorten long approaches when they have already used the ground-time allowance.
+                    float urgency=Mathf.InverseLerp(0,8,-groundTimeBalance);
+                    runSpeed=Mathf.Max(runSpeed,Mathf.Lerp(3.55f,automaticSpeed,urgency));
+                }
+                speed=Mathf.Lerp(.84f,runSpeed,rideApproachJog)*Mathf.Lerp(.32f,1,turn);
+            }
+            var next=Vector3.MoveTowards(transform.position,target,dt*speed);
+            if(!RideStepClear(next,mark))
+            {
+                rideApproachJog=0;
                 Character.PlayIdlePose();
                 return false;
             }
             next.y=park.SurfaceHeight(next);
-            WalkTo(next);
+            WalkTo(next,jog:rideApproachJog);
+            return false;
+        }
+        bool RideStepClear(Vector3 next,Vector3 mark)
+        {
+            if(!park.WalkingSegmentClear(transform.position,next))return false;
+            if(ride is not (ParkVillageDeer or ParkIceRink)||park.DeerPathClear(transform.position,next))return true;
+            if(deerRouteRetry>0)return false;
+            deerRouteRetry=.35f;
+            if(park.TryBuildRidePath(transform.position,mark,out var route,avoidDeer:true))
+            {
+                rideRoute=route;
+                rideWaypoint=0;
+            }
             return false;
         }
         internal void WalkAtRideStation(Vector3 point,float cadenceScale=1f)
@@ -626,15 +753,17 @@ namespace PeacePark
         }
         internal void EndRide()
         {
+            rideActivityStarted=false;
             ride=null;
             rideRoute=null;
             if(!isActiveAndEnabled||!park||!Character)return;
-            activityDelay=Range(9,21);
+            activityDelay=0;
             GroundAtCurrentPosition();
             Character.PlayIdlePose();
             ChooseDestination();
             pause=.35f;
         }
+        internal void BeginRideActivity() => rideActivityStarted=true;
         void GroundAtCurrentPosition()
         {
             var p=transform.position;p.y=park.SurfaceHeight(p);transform.position=p;
@@ -675,7 +804,7 @@ namespace PeacePark
         }
         void ChooseDestination()
         {
-            var area=park.WalkArea;
+            var area=park.ResortRiver&&park.ResortRiver.IsOnIsland(transform.position)?park.ResortRiver.IslandWalkBounds:park.WalkArea;
             destination=transform.position;
             for(int i=0;i<20;i++)
             {
@@ -722,6 +851,16 @@ namespace PeacePark
                     desired+=away.normalized*(1-Mathf.Clamp01(distance/1.15f))*2.1f;
                 }
             }
+            if(park.Deer!=null)
+                foreach(var deer in park.Deer)
+                {
+                    if(!deer||!deer.isActiveAndEnabled)continue;
+                    var away=deer.OffsetFromBody(position);
+                    float distance=away.magnitude;
+                    if(distance>=1.60f)continue;
+                    if(distance<.001f)away=deer.transform.right;
+                    desired+=away.normalized*(1-distance/1.60f)*2.6f;
+                }
             if(desired.sqrMagnitude<.001f)desired=-transform.forward;
             wanderSpeed=Mathf.MoveTowards(wanderSpeed,WanderSpeed,deltaTime*2.6f);
             var step=desired.normalized*(wanderSpeed*deltaTime);
@@ -748,6 +887,9 @@ namespace PeacePark
             heading=next-position;
             next.y=park.SurfaceHeight(next);
             float moved=heading.magnitude;transform.position=next;WalkedDistance+=moved;
+            // Six seconds of walking earn four seconds split between dancing and hopping.
+            if(moved>0&&!leavingEntrance&&UsesParkActivityMix)
+                parkPlayTimeBudget=Mathf.Min(DanceDuration,parkPlayTimeBudget+deltaTime*(4f/6f));
             phase=Character.AdvanceWalkPhase(phase,moved);
             float walkBlend=Mathf.SmoothStep(0,1,moved/(WanderSpeed*deltaTime));
             Character.PlayWalkingPose(phase,walkBlend);blocked=0;
@@ -765,6 +907,13 @@ namespace PeacePark
                 float penetration=AnimalSpacing-Mathf.Sqrt(distanceSquared);
                 overlap+=penetration*penetration;
             }
+            if(park.Deer!=null)
+                foreach(var deer in park.Deer)
+                {
+                    if(!deer||!deer.isActiveAndEnabled)continue;
+                    float penetration=deer.AnimalPenetration(point);
+                    overlap+=penetration*penetration;
+                }
             return overlap;
         }
         bool TryStep(Vector3 position,Vector3 step,float overlap,out Vector3 next)

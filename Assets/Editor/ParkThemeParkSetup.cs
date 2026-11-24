@@ -7,6 +7,7 @@ namespace PeacePark.Editor
 {
     internal sealed partial class ParkThemeParkSetup
     {
+        const float ParkScale=2f/3f;
         const int TrainCarCount=6;
         static readonly Vector3 WheelLocation=new Vector3(-31.4f,0,-5.5f);
         static readonly Vector3 CarouselLocation=new Vector3(28.6f,0,2.6f);
@@ -43,7 +44,7 @@ namespace PeacePark.Editor
             MakeLandscaping(root);
             var wheel=MakeFerrisWheel(root);
             var carousel=MakeCarousel(root);
-            return new ParkVenue
+            return ScaleVenue(new ParkVenue
             {
                 Name="놀이공원", Root=root.gameObject, Houses=new[]{popcorn,balloons}, Train=train, Wheel=wheel, Carousel=carousel, Path=deck, LawnHeight=.015f,
                 WalkArea=Rect.MinMaxRect(-36f,ParkElephantTrain.StationRailZ+3.1f,36f,-5f),
@@ -56,11 +57,11 @@ namespace PeacePark.Editor
                     Rect.MinMaxRect(4.3f,-11.7f,37f,-4f),
                     Rect.MinMaxRect(10.98f,-25.49f,11.82f,-24.65f),
                     Rect.MinMaxRect(15.88f,-25.49f,16.72f,-24.65f)},
-                Focus=new Vector3(-1,8.5f,-6), Distance=89, Yaw=-4, Pitch=27, MaxDistance=132,
+                Focus=new Vector3(-1,13f,-6), Distance=81, Yaw=-4, Pitch=27, MaxDistance=132,
                 CameraPanLimits=new Vector2(58,43), FogStart=135, FogEnd=212, FarClipDistance=220,
                 Sky=new Color32(164,208,239,255),
                 Preview=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/Venues/ThemePark.jpg")
-            };
+            }, Vector3.one*ParkScale, viewScale: ParkScale);
         }
 
         void MakeTrack(Transform root)
@@ -203,6 +204,7 @@ namespace PeacePark.Editor
         ParkHouse MakeShop(Transform root,Vector3 position,string name,string label,Material color)
         {
             var shop=Group(name,root,position);
+            shop.localScale=new Vector3(1,1/ParkScale,1);
             var body=new Pieces();
             body.Add(box,cream,new Vector3(-1.38f,1.22f,1.09f),new Vector3(.62f,2.5f,2.98f));
             body.Add(box,cream,new Vector3(1.38f,1.22f,1.09f),new Vector3(.62f,2.5f,2.98f));

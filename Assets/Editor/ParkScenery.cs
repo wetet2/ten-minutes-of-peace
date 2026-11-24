@@ -28,6 +28,31 @@ namespace PeacePark.Editor
             return group;
         }
 
+        internal static ParkVenue ScaleVenue(ParkVenue venue, Vector3 scale, float viewScale)
+        {
+            // Geometry and ride paths use venue coordinates. Navigation and camera settings use world coordinates.
+            venue.Root.transform.localScale = scale;
+            var horizontal = new Vector2(scale.x, scale.z);
+            venue.WalkArea = ScaleRect(venue.WalkArea);
+            venue.PlazaWalkArea = ScaleRect(venue.PlazaWalkArea);
+            for (int i = 0; i < venue.WalkObstacles.Length; i++)
+                venue.WalkObstacles[i] = ScaleRect(venue.WalkObstacles[i]);
+            venue.PondCenter = Vector2.Scale(venue.PondCenter, horizontal);
+            venue.PondRadii = Vector2.Scale(venue.PondRadii, horizontal);
+            venue.LawnHeight *= scale.y;
+            venue.Focus = Vector3.Scale(venue.Focus, scale);
+            venue.CameraPanLimits = Vector2.Scale(venue.CameraPanLimits, horizontal);
+            venue.Distance *= viewScale;
+            venue.MaxDistance *= viewScale;
+            venue.FarClipDistance *= viewScale;
+            venue.FogStart *= viewScale;
+            venue.FogEnd *= viewScale;
+            venue.ShadowDistance *= viewScale;
+            return venue;
+
+            Rect ScaleRect(Rect rect) => new Rect(Vector2.Scale(rect.position, horizontal), Vector2.Scale(rect.size, horizontal));
+        }
+
         internal static Transform PlaceOnGround(string name, Mesh mesh, Material material, Transform parent,
             Vector3 ground, float height, Quaternion rotation)
         {

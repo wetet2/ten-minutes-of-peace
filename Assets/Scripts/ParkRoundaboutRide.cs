@@ -115,7 +115,11 @@ namespace PeacePark
             spin.Advance(degrees);
             alignmentDegrees-=degrees;
             rider.Character.PlayRideQueuePose(elapsed,rider.Id);
-            if(alignmentDegrees<=0)Enter(Stage.Board);
+            if(alignmentDegrees<=0)
+            {
+                rider.BeginRideActivity();
+                Enter(Stage.Board);
+            }
         }
 
         void HoldRail(float grip,float sway)

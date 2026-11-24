@@ -62,10 +62,22 @@ namespace PeacePark.Editor
                 var forestRide=renderer.GetComponentInParent<ParkForestRide>();
                 if(forestRide&&forestRide.IsMovingPart(renderer.transform))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                var rink=renderer.GetComponentInParent<ParkIceRink>();
+                if(rink&&rink.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
                 var sandSled=renderer.GetComponentInParent<ParkSandSled>();
                 if(sandSled&&sandSled.IsMovingPart(renderer.transform))
                 {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
-                if(renderer.GetComponentInParent<ParkElephantTrain>()||renderer.GetComponentInParent<ParkThemeParkWheel>()||
+                var camp=renderer.GetComponentInParent<ParkDesertCamp>();
+                if(camp&&camp.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                var river=renderer.GetComponentInParent<ParkResortRiver>();
+                if(river&&river.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                var resortSlide=renderer.GetComponentInParent<ParkResortSlide>();
+                if(resortSlide&&resortSlide.IsMovingPart(renderer.transform))
+                {GameObjectUtility.SetStaticEditorFlags(renderer.gameObject,0);continue;}
+                if(renderer.GetComponentInParent<ParkElephantTrain>()||renderer.GetComponentInParent<ParkThemeParkWheel>()||renderer.GetComponentInParent<ParkVillageDeer>()||
                     renderer.GetComponentInParent<RoofSunflowerSpin>()||renderer.GetComponentInParent<ParkButterfly>()||
                     renderer.GetComponentInParent<ParkRoundaboutSpin>()||renderer.GetComponentInParent<ParkTowerClock>()||
                     (fountain&&fountain.IsMovingPart(renderer.transform)))

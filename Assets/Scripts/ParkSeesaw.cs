@@ -43,7 +43,11 @@ namespace PeacePark
             {
                 for(int i=0;i<2;i++)
                     if(!ready[i])ready[i]=riders[i].WalkToRideMark(Mark(i),Facing(i),dt);
-                if(ready[0]&&ready[1])stage=Stage.Mounting;
+                if(ready[0]&&ready[1])
+                {
+                    foreach(var rider in riders)rider.BeginRideActivity();
+                    stage=Stage.Mounting;
+                }
                 return;
             }
             elapsed+=dt;
@@ -72,10 +76,10 @@ namespace PeacePark
             var animal=riders[i];
             int side=Side(i);
             animal.transform.rotation=Quaternion.LookRotation(side*Beam.right,Beam.up);
-            var hipOffset=animal.Character.PlayCarouselSeatPose(seated);
+            var hipOffset=animal.Character.PlayStraddleRidePose(seated);
             var seat=Beam.TransformPoint(new Vector3(side*1.98f,.28f,0));
             animal.transform.position=Vector3.Lerp(Mark(i),seat-hipOffset,seated)+Vector3.up*(.34f*4*seated*(1-seated));
-            animal.Character.GripCarouselHandle(Beam.TransformPoint(new Vector3(side*1.41f,.58f,0)),seated);
+            animal.Character.GripRideHandle(Beam.TransformPoint(new Vector3(side*1.41f,.58f,0)),seated);
         }
 
         bool IParkAnimalRide.TryLeaveQueue(ParkRabbitAgent animal)

@@ -6,23 +6,34 @@ namespace PeacePark
 {
     public sealed partial class ParkCamera
     {
-        const float DefaultFollowDistance=10f;
-        const float FollowFramingScale=1.4f;
+        const float DefaultFollowDistance=15f;
+        const float FollowFramingScale=2.1f;
+        const float AutoFollowDistanceScale=1.5f;
+        const float FollowAimTime=.32f,FollowAngleTime=.42f;
+        const float AutoHandoffTimeScale=2f,AutoHandoffDuration=FollowAngleTime*AutoHandoffTimeScale*3f;
+        const float AutoSelectionHoldSeconds=4f;
+        const float SledLaunchRightAngle=15f,SledLaunchPitch=45f,SledLaunchEasing=.075f;
         ParkPlayground park;
         Camera viewCamera;
-        ParkRabbitAgent followTarget,tappedAnimal;
+        ParkRabbitAgent followTarget,tappedAnimal,hoveredAnimal;
         ParkElephantTrain seatedTrain,tappedTrain;
         bool locomotiveView,tappedLocomotive;
         bool following,returning,pointerActive,pointerDragged;
         bool freeAim,savedFreeAim;
+        bool sledLaunchFramed,aimAutoFollowToVenue;
         int pointerId;
         Vector2 pointerStart;
-        float pointerStartedAt,followDistance,zoomVelocity,yawVelocity,pitchVelocity;
+        float pointerStartedAt,followDistance,zoomVelocity,yawVelocity,pitchVelocity,autoHandoffRemaining;
+        float autoSelectionRemaining;
+        float? wheelDistance;
         Vector3 focusVelocity,followOffset;
         Vector3 savedFocus;
         float savedDistance,savedYaw,savedPitch;
         readonly Dictionary<Mesh,Bounds> headBounds=new Dictionary<Mesh,Bounds>();
+        readonly System.Random autoFollowRandom=new System.Random();
         internal ParkRabbitAgent FollowTarget=>seatedTrain?null:followTarget;
+        internal ParkRabbitAgent ManualFollowTarget=>AutoFollowEnabled?null:FollowTarget;
+        internal bool AutoFollowEnabled {get;private set;}
         internal bool IsReturning=>returning;
         float ZoomDistance=>following?followDistance:distance;
 
@@ -67,6 +78,12 @@ namespace PeacePark
             else if(animal)ToggleAnimalFollow(animal);
             else if(train&&train.isActiveAndEnabled&&park&&park.Train==train)
             {
+                if(AutoFollowEnabled)
+                {
+                    StopAutoFollow();
+                    CancelAnimalFollow(true);
+                }
+                StopWheelZoom();
                 seatedTrain=train;
                 locomotiveView=locomotive;
                 Apply();
@@ -92,7 +109,7 @@ namespace PeacePark
                 // During arrivals the animated head and torso can shift away from the animal's root.
                 var headPose=animal.transform.localToWorldMatrix;
                 var bodyPose=headPose;
-                if(animal.State==ParkRabbitState.WalkingOut)
+                if(animal.State==ParkRabbitState.WalkingOut||animal.ActiveAction!=ParkAnimalAction.None)
                 {
                     var skin=animal.Character.Skin;
                     var bones=skin.bones;
@@ -133,41 +150,227 @@ namespace PeacePark
             }
             bounds.Expand(.10f);headBounds[mesh]=bounds;return bounds;
         }
-        Vector3 AnimalFocus()=>followTarget.transform.position+
-            Vector3.up*(followTarget.Character.Skin.sharedMesh.bounds.max.y*followTarget.transform.lossyScale.y*.55f)+followOffset;
+        Vector3 AnimalFocus()
+        {
+            if((park.ResortSwim&&park.ResortSwim.IsSwimming(followTarget))||
+                (park.ResortSlide&&park.ResortSlide.IsSwimming(followTarget)))
+                return followTarget.Character.SwimChest+Vector3.up*.36f+followOffset;
+            return RaisedAnimalFocus(followTarget.transform.position);
+        }
+        Vector3 RaisedAnimalFocus(Vector3 point) =>
+            point+Vector3.up*(followTarget.Character.Skin.sharedMesh.bounds.max.y*
+                followTarget.transform.lossyScale.y*.55f)+followOffset;
+
+        void AdvanceFollowAim(float dt,bool autoHandoff)
+        {
+            var sled=park.SandSled;
+            if(sled&&followTarget.IsHiddenForRide)
+            {
+                aimAutoFollowToVenue=false;
+                var launch=sled.LaunchViewAnchor();
+                focus=Vector3.SmoothDamp(focus,RaisedAnimalFocus(launch.position),ref focusVelocity,
+                    autoHandoff?FollowAimTime:SledLaunchEasing,Mathf.Infinity,dt);
+                DampFollowAngles(launch.rotation.eulerAngles.y-SledLaunchRightAngle,SledLaunchPitch,
+                    autoHandoff?FollowAngleTime:SledLaunchEasing,dt);
+                return;
+            }
+            if(sled&&sled.IsRevealing(followTarget))
+            {
+                if(!sledLaunchFramed||autoHandoff)
+                {
+                    aimAutoFollowToVenue=false;
+                    sledLaunchFramed=true;
+                    // The sled moves forward, so a negative orbit yaw puts the camera on its rear-right.
+                    float launchYaw=sled.LaunchViewAnchor().rotation.eulerAngles.y-SledLaunchRightAngle;
+                    if(autoHandoff)
+                    {
+                        focus=Vector3.SmoothDamp(focus,AnimalFocus(),ref focusVelocity,FollowAimTime,Mathf.Infinity,dt);
+                        DampFollowAngles(launchYaw,SledLaunchPitch,FollowAngleTime,dt);
+                        return;
+                    }
+                    focus=AnimalFocus();
+                    yaw=launchYaw;
+                    pitch=SledLaunchPitch;
+                    focusVelocity=Vector3.zero;
+                    yawVelocity=pitchVelocity=0;
+                    return;
+                }
+            }
+            else sledLaunchFramed=false;
+            if(aimAutoFollowToVenue)
+            {
+                DampFollowAngles(initialYaw,initialPitch,FollowAngleTime,dt);
+                if(Mathf.Abs(Mathf.DeltaAngle(yaw,initialYaw))<.03f&&Mathf.Abs(pitch-initialPitch)<.03f)
+                    aimAutoFollowToVenue=false;
+            }
+            focus=Vector3.SmoothDamp(focus,AnimalFocus(),ref focusVelocity,FollowAimTime,Mathf.Infinity,dt);
+        }
+
+        void DampFollowAngles(float targetYaw,float targetPitch,float smoothTime,float dt)
+        {
+            yaw=Mathf.SmoothDampAngle(yaw,targetYaw,ref yawVelocity,smoothTime,Mathf.Infinity,dt);
+            pitch=Mathf.SmoothDampAngle(pitch,targetPitch,ref pitchVelocity,smoothTime,Mathf.Infinity,dt);
+        }
+
+        internal void UpdateAnimalHover(Vector2 position,bool pointerAvailable)
+        {
+            ParkRabbitAgent animal=null;
+            if(pointerAvailable&&InputEnabled&&!seatedTrain&&park&&park.IsViewingPark&&viewCamera&&CanStartPointer(position,-1))
+            {
+                var train=park.Train;
+                float depth=train&&train.isActiveAndEnabled?train.PickDepth(viewCamera.ScreenPointToRay(position),out _):float.PositiveInfinity;
+                animal=AnimalAt(position,depth);
+            }
+            SetHoveredAnimal(animal);
+        }
+
+        void SetHoveredAnimal(ParkRabbitAgent animal)
+        {
+            if(hoveredAnimal==animal)return;
+            if(hoveredAnimal&&hoveredAnimal.Character)hoveredAnimal.Character.SetHoverHighlight(false);
+            hoveredAnimal=animal;
+            if(hoveredAnimal)hoveredAnimal.Character.SetHoverHighlight(true);
+        }
 
         internal void ToggleAnimalFollow(ParkRabbitAgent animal)
         {
             if(!park||!park.CanFollowAnimal(animal))return;
             if(IsResetting)InterruptReturn();
+            if(AutoFollowEnabled)
+            {
+                if(following&&followTarget==animal)return;
+                BeginAnimalFollow(animal,following);
+                // Let the camera settle on a selected animal even when it has no current activity.
+                if(!animal.IsUsingRide)autoSelectionRemaining=AutoSelectionHoldSeconds;
+                return;
+            }
             if(following&&followTarget==animal){ReleaseAnimalFollow();return;}
+            BeginAnimalFollow(animal);
+        }
+
+        internal void ToggleAutoFollow()
+        {
+            if(AutoFollowEnabled)
+            {
+                StopAutoFollow();
+                return;
+            }
+            if(!park||!park.IsViewingPark||!InputEnabled)return;
+            LeaveTrainView();
+            if(IsResetting)InterruptReturn();
+            StopWheelZoom();
+            AutoFollowEnabled=true;
+            var candidate=PickAutoFollowTarget();
+            if(candidate)
+            {
+                BeginAnimalFollow(candidate);
+                return;
+            }
+            if(!following&&!returning&&!freeAim)focus=NormalFocus(focus,distance);
+            SaveVenueDefaultView();
+            BeginFollowReturn();
+        }
+
+        internal void StopAutoFollow()
+        {
+            if(!AutoFollowEnabled)return;
+            AutoFollowEnabled=false;
+            ReleaseAnimalFollow();
+        }
+
+        void UpdateAutoFollowTarget(float dt)
+        {
+            if(!AutoFollowEnabled||!InputEnabled||seatedTrain||!park||!park.IsViewingPark)return;
+            if(following&&followTarget&&park.CanKeepFollowingAnimal(followTarget))
+            {
+                if(followTarget.IsUsingRide)
+                {
+                    autoSelectionRemaining=0;
+                    return;
+                }
+                autoSelectionRemaining=Mathf.Max(0,autoSelectionRemaining-dt);
+                if(autoSelectionRemaining>0)return;
+            }
+            Vector3? previousPosition=following?(followTarget?followTarget.transform.position:focus):null;
+            var candidate=PickAutoFollowTarget(previousPosition);
+            if(candidate)BeginAnimalFollow(candidate,following);
+            else ReleaseAnimalFollow();
+        }
+
+        ParkRabbitAgent PickAutoFollowTarget(Vector3? previousPosition=null)
+        {
+            ParkRabbitAgent selected=null;
+            float nearestDistance=float.PositiveInfinity;
+            int count=0;
+            foreach(var animal in park.Animals)
+            {
+                if(!animal||!animal.IsUsingRide||!park.CanFollowAnimal(animal))continue;
+                if(!previousPosition.HasValue)
+                {
+                    if(autoFollowRandom.Next(++count)==0)selected=animal;
+                    continue;
+                }
+                float distance=(animal.transform.position-previousPosition.Value).sqrMagnitude;
+                if(distance<nearestDistance)
+                {
+                    nearestDistance=distance;
+                    selected=animal;
+                }
+            }
+            return selected;
+        }
+
+        void SaveVenueDefaultView()
+        {
+            savedFocus=initialFocus;savedDistance=initialDistance;savedYaw=initialYaw;savedPitch=initialPitch;
+            savedFreeAim=false;
+        }
+
+        void BeginAnimalFollow(ParkRabbitAgent animal,bool autoHandoff=false)
+        {
+            StopWheelZoom();
+            // Use the displayed orbit for a hand-selected animal and the venue overview for automatic follow.
+            if(AutoFollowEnabled)SaveVenueDefaultView();
             if(!following&&!returning)
             {
-                savedFocus=focus;savedDistance=distance;savedYaw=yaw;savedPitch=pitch;savedFreeAim=freeAim;
+                if(!AutoFollowEnabled)
+                {savedFocus=focus;savedDistance=distance;savedYaw=yaw;savedPitch=pitch;savedFreeAim=freeAim;}
                 if(!freeAim)focus=NormalFocus(focus,distance);
             }
-            following=true;returning=false;followTarget=animal;followOffset=Vector3.zero;
+            following=true;returning=false;followTarget=animal;followOffset=Vector3.zero;sledLaunchFramed=false;
+            aimAutoFollowToVenue=AutoFollowEnabled;
+            autoHandoffRemaining=autoHandoff?AutoHandoffDuration:0;
+            autoSelectionRemaining=0;
             // Leave room around the animal, including taller animals in narrow windows.
             float height=animal.Character.Skin.sharedMesh.bounds.size.y*animal.transform.lossyScale.y;
             float halfAngle=viewCamera.fieldOfView*.5f*Mathf.Deg2Rad;
             float framing=height*.75f/(Mathf.Tan(halfAngle)*Mathf.Min(1,viewCamera.aspect));
             float framedDistance=Mathf.Max(DefaultFollowDistance,framing*FollowFramingScale);
-            followDistance=Mathf.Clamp(Mathf.Min(savedDistance,framedDistance),MinimumDistance,maxDistance);
+            float manualDistance=Mathf.Min(savedDistance,framedDistance);
+            followDistance=Mathf.Clamp(manualDistance*(AutoFollowEnabled?AutoFollowDistanceScale:1),MinimumDistance,maxDistance);
             focusVelocity=Vector3.zero;zoomVelocity=yawVelocity=pitchVelocity=0;
         }
         internal void ReleaseAnimalFollow()
         {
-            if(!following)return;
+            if(following)BeginFollowReturn();
+        }
+        void BeginFollowReturn()
+        {
             following=false;returning=true;followTarget=null;
+            aimAutoFollowToVenue=false;
+            autoHandoffRemaining=autoSelectionRemaining=0;
             focusVelocity=Vector3.zero;zoomVelocity=yawVelocity=pitchVelocity=0;
         }
         internal void CancelAnimalFollow(bool restore)
         {
+            SetHoveredAnimal(null);
             resetElapsed=-1f;
+            StopWheelZoom();
             if(restore&&(following||returning))
             {focus=savedFocus;distance=savedDistance;yaw=savedYaw;pitch=savedPitch;freeAim=savedFreeAim;}
             else if(!restore)freeAim=false;
-            following=returning=false;followTarget=null;followOffset=focusVelocity=Vector3.zero;
+            following=returning=sledLaunchFramed=aimAutoFollowToVenue=false;followTarget=null;followOffset=focusVelocity=Vector3.zero;
+            autoHandoffRemaining=autoSelectionRemaining=0;
             zoomVelocity=yawVelocity=pitchVelocity=0;CancelAnimalTap();
         }
         void InterruptReturn()
@@ -181,8 +384,25 @@ namespace PeacePark
         {
             if(seatedTrain)return;
             InterruptReturn();
+            StopWheelZoom();
             value=Mathf.Clamp(value,MinimumDistance,maxDistance);
             if(following)followDistance=value;else distance=value;
+        }
+        internal void ApplyWheelZoom(float scroll)
+        {
+            if(!InputEnabled||seatedTrain||scroll==0)return;
+            InterruptReturn();
+            float current=following?followDistance:(wheelDistance??distance);
+            float target=Mathf.Clamp(current*Mathf.Exp(-scroll*.1f),MinimumDistance,maxDistance);
+            if(following)followDistance=target;
+            else if(target==distance)StopWheelZoom();
+            else wheelDistance=target;
+        }
+        void StopWheelZoom()
+        {
+            if(!wheelDistance.HasValue)return;
+            wheelDistance=null;
+            zoomVelocity=0;
         }
         void LateUpdate()
         {
@@ -190,14 +410,14 @@ namespace PeacePark
             {
                 if(seatedTrain.isActiveAndEnabled)Apply();
                 else LeaveTrainView();
-                return;
             }
-            if(!InputEnabled&&!IsResetting)return;
-            AdvanceAnimalFollow(Time.unscaledDeltaTime);
+            else if(InputEnabled||IsResetting)AdvanceAnimalFollow(Time.unscaledDeltaTime);
+            UpdateAnimalHover(Input.mousePosition,Application.isFocused&&!Application.isMobilePlatform&&Input.mousePresent&&
+                Input.touchCount==0&&!waitForTouchRelease&&GUIUtility.hotControl==0&&
+                !Input.GetMouseButton(0)&&!Input.GetMouseButton(1)&&!Input.GetMouseButton(2));
         }
         internal void AdvanceAnimalFollow(float dt)
         {
-            if(following&&(!followTarget||!park.CanFollowAnimal(followTarget)))ReleaseAnimalFollow();
             if(dt<=0)return;
             if(IsResetting)
             {
@@ -206,10 +426,16 @@ namespace PeacePark
                 else Apply();
                 return;
             }
+            UpdateAutoFollowTarget(dt);
+            if(following&&(!followTarget||!park.CanKeepFollowingAnimal(followTarget)))ReleaseAnimalFollow();
             if(following)
             {
-                focus=Vector3.SmoothDamp(focus,AnimalFocus(),ref focusVelocity,.32f,Mathf.Infinity,dt);
-                distance=Mathf.SmoothDamp(distance,followDistance,ref zoomVelocity,.40f,Mathf.Infinity,dt);
+                // Slow the handoff until the camera has nearly settled, then track at the usual speed.
+                float handoffStep=Mathf.Min(dt,autoHandoffRemaining);
+                autoHandoffRemaining-=handoffStep;
+                float followStep=dt-handoffStep+handoffStep/AutoHandoffTimeScale;
+                AdvanceFollowAim(followStep,handoffStep>0);
+                distance=Mathf.SmoothDamp(distance,followDistance,ref zoomVelocity,.40f,Mathf.Infinity,followStep);
             }
             else if(returning)
             {
@@ -222,8 +448,26 @@ namespace PeacePark
                     Mathf.Abs(Mathf.DeltaAngle(yaw,savedYaw))<.03f&&Mathf.Abs(pitch-savedPitch)<.03f)
                     CancelAnimalFollow(true);
             }
+            else if(wheelDistance.HasValue)
+            {
+                float target=wheelDistance.Value;
+                distance=Mathf.Clamp(Mathf.SmoothDamp(distance,target,ref zoomVelocity,.16f,Mathf.Infinity,dt),
+                    MinimumDistance,maxDistance);
+                if(Mathf.Abs(distance-target)<.003f)
+                {
+                    distance=target;
+                    StopWheelZoom();
+                }
+            }
             Apply();
         }
-        void OnApplicationFocus(bool hasFocus){if(!hasFocus)ClearTouchGesture();}
+        void OnDisable()=>SetHoveredAnimal(null);
+        void OnApplicationFocus(bool hasFocus)
+        {
+            if(hasFocus)return;
+            ClearTouchGesture();
+            mousePanning=false;
+            SetHoveredAnimal(null);
+        }
     }
 }

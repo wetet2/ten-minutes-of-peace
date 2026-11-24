@@ -12,7 +12,8 @@ namespace PeacePark
         public float pitch = 48;
         public bool InputEnabled=true;
         public bool ShowControls=true;
-        Vector3 previous;
+        Vector2 previousMouse;
+        bool mousePanning,touchInputActive;
         int firstPinchFinger=-1, secondPinchFinger=-1;
         float previousPinchSpan;
         Vector2 previousTouchCenter;
@@ -35,40 +36,55 @@ namespace PeacePark
         void OnEnable() { ClearTouchGesture(); Apply(); }
         void Update()
         {
-            Vector3 mouse = Input.mousePosition;
+            Vector2 mouse=Input.mousePosition;
+            int touchCount=Input.touchCount;
             if(!InputEnabled||GUIUtility.hotControl!=0)
             {
-                previous=mouse;
+                previousMouse=mouse;
                 ClearTouchGesture();
-                touchBlockedByUi=Input.touchCount>0;
+                mousePanning=false;
+                touchBlockedByUi=touchCount>0;
                 return;
             }
-            if(Input.touchCount>0||Application.isMobilePlatform||waitForTouchRelease||touchBlockedByUi)
+            if(touchCount>0)
             {
-                previous=mouse;
-                UpdateTouch();
+                // Unity can also emit simulated mouse input for these touches.
+                if(!touchInputActive)CancelAnimalTap();
+                touchInputActive=true;
+                mousePanning=false;
+                previousMouse=mouse;
+                UpdateTouch(touchCount);
                 return;
             }
-            Vector3 delta = mouse - previous;
-            if(Input.GetMouseButtonDown(0))BeginAnimalTap(mouse,-1);
-            if(Input.GetMouseButton(1)||Input.GetMouseButton(2))CancelAnimalTap();
-            if (Input.GetMouseButton(0) && !Input.GetMouseButtonDown(0) && MoveAnimalTap(mouse))
-            {
-                Orbit(delta);
-            }
-            if ((Input.GetMouseButton(1) && !Input.GetMouseButtonDown(1)) ||
-                (Input.GetMouseButton(2) && !Input.GetMouseButtonDown(2)))
-                Pan(delta);
-            if(Input.GetMouseButtonUp(0))EndAnimalTap(mouse,-1);
-            if(Input.mouseScrollDelta.y!=0)ZoomTo(ZoomDistance*Mathf.Exp(-Input.mouseScrollDelta.y*.1f));
-            previous = mouse;
+            if(touchInputActive||touchBlockedByUi)ClearTouchGesture();
+            UpdateMouse(mouse,Input.GetMouseButton(0),Input.GetMouseButtonDown(0),Input.GetMouseButtonUp(0),
+                Input.GetMouseButton(1)||Input.GetMouseButton(2),Input.GetMouseButtonDown(1)||Input.GetMouseButtonDown(2),
+                Input.mouseScrollDelta.y,Application.isMobilePlatform);
             if (Input.GetKeyDown(KeyCode.Home)) ResetView();
             else Apply();
+        }
+
+        internal void UpdateMouse(Vector2 mouse,bool leftHeld,bool leftPressed,bool leftReleased,
+            bool panHeld,bool panPressed,float scroll,bool scaleLikeTouch)
+        {
+            Vector2 delta=mouse-previousMouse;
+            previousMouse=mouse;
+            float motionHeight=scaleLikeTouch?Screen.height:900f;
+            if(leftPressed)BeginAnimalTap(mouse,-1);
+            if(panHeld)CancelAnimalTap();
+            if(leftHeld&&!leftPressed&&MoveAnimalTap(mouse))
+                Orbit(delta*(900f/motionHeight));
+            if(!panHeld)mousePanning=false;
+            else if(panPressed)mousePanning=CanStartPointer(mouse,-1);
+            else if(mousePanning)PanPointer(delta,motionHeight);
+            if(leftReleased)EndAnimalTap(mouse,-1);
+            if(scroll!=0&&CanStartPointer(mouse,-1))ApplyWheelZoom(scroll);
         }
         void Orbit(Vector2 delta)
         {
             if(seatedTrain)return;
             InterruptReturn();
+            aimAutoFollowToVenue=false;
             yaw+=delta.x*.25f;
             pitch=Mathf.Clamp(pitch-delta.y*.2f,12,82);
         }
@@ -83,10 +99,8 @@ namespace PeacePark
             focus.x=Mathf.Clamp(focus.x,-panX,panX);
             focus.z=Mathf.Clamp(focus.z,-panZ,panZ);
         }
-        void UpdateTouch()
+        void UpdateTouch(int count)
         {
-            int count=Input.touchCount;
-            if(count==0){ClearTouchGesture();return;}
             if(touchBlockedByUi)return;
             if(count!=2)
             {
@@ -141,7 +155,11 @@ namespace PeacePark
         internal void ApplyTwoFingerGesture(Vector2 centerDelta,float screenHeight,float previousSpan,float span)
         {
             ZoomTo(DistanceFromPinch(ZoomDistance,previousSpan,span,maxDistance));
-            if(centerDelta.sqrMagnitude>0)Pan(centerDelta*(900f/screenHeight));
+            PanPointer(centerDelta,screenHeight);
+        }
+        void PanPointer(Vector2 delta,float screenHeight)
+        {
+            if(delta.sqrMagnitude>0)Pan(delta*(900f/screenHeight));
         }
         bool BelowToolbar(Vector2 position)
         {
@@ -156,6 +174,7 @@ namespace PeacePark
             previousPinchSpan=0;
             waitForTouchRelease=false;
             touchBlockedByUi=false;
+            touchInputActive=false;
         }
         internal static float DistanceFromPinch(float current,float previousSpan,float span,float limit=48)
         {
@@ -181,7 +200,17 @@ namespace PeacePark
             }
             transform.rotation = Quaternion.Euler(pitch, yaw, roll);
             var target=following||returning||freeAim?focus:NormalFocus(focus,distance);
-            transform.position = target - transform.forward * distance;
+            var position=target-transform.forward*distance;
+            if(following&&followTarget&&park.SandSled&&followTarget.ActiveAction==ParkAnimalAction.SandSled)
+            {
+                float clearance=park.SurfaceHeight(position)+.65f;
+                if(position.y<clearance)
+                {
+                    position.y=clearance;
+                    transform.rotation=Quaternion.LookRotation(target-position,Vector3.up);
+                }
+            }
+            transform.position=position;
         }
         Vector3 NormalFocus(Vector3 target,float viewDistance)
         {
@@ -200,6 +229,7 @@ namespace PeacePark
             resetStartDistance=distance;
             resetStartFocus=transform.position+transform.forward*distance;
             seatedTrain=null;
+            AutoFollowEnabled=false;
             CancelAnimalFollow(false);
             freeAim=true;
             resetElapsed=0f;

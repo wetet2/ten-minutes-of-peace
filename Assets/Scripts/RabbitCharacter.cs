@@ -34,19 +34,38 @@ namespace PeacePark
         public int[] SkinTriangles {get;private set;}
         public SkinnedMeshRenderer Skin=>skin;
         static readonly int AnimalVisibilityId=Shader.PropertyToID("_AnimalVisibility");
-        MaterialPropertyBlock fadeProperties;
+        static readonly int AnimalHighlightId=Shader.PropertyToID("_AnimalHighlight");
+        MaterialPropertyBlock skinProperties;
+        bool fading;
 
         internal void SetVisibility(float visibility)
         {
-            if(fadeProperties==null)
+            if(skateVisibility!=visibility){skateVisibility=visibility;ApplySkateVisibility();}
+            bool needsFade=visibility<1;
+            if(!needsFade&&!fading)return;
+            if(needsFade!=fading)
             {
-                foreach(var material in materials)material.EnableKeyword("PEACE_PARK_ANIMAL_FADING");
-                skin.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+                foreach(var material in materials)
+                {
+                    if(needsFade)material.EnableKeyword("PEACE_PARK_ANIMAL_FADING");
+                    else material.DisableKeyword("PEACE_PARK_ANIMAL_FADING");
+                }
+                fading=needsFade;
             }
-            fadeProperties??=new MaterialPropertyBlock();
-            skin.GetPropertyBlock(fadeProperties);
-            fadeProperties.SetFloat(AnimalVisibilityId,visibility);
-            skin.SetPropertyBlock(fadeProperties);
+            SetSkinProperty(AnimalVisibilityId,visibility);
+        }
+
+        internal void SetHoverHighlight(bool highlighted)
+        {
+            if(skin)SetSkinProperty(AnimalHighlightId,highlighted?1:0);
+        }
+
+        void SetSkinProperty(int property,float value)
+        {
+            skinProperties??=new MaterialPropertyBlock();
+            skin.GetPropertyBlock(skinProperties);
+            skinProperties.SetFloat(property,value);
+            skin.SetPropertyBlock(skinProperties);
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -189,10 +208,10 @@ namespace PeacePark
             }
         }
         public void PlayWalkingPose(float phase)=>PlayWalkingPose(phase,1);
-        internal void PlayWalkingPose(float phase,float strength)
+        internal void PlayWalkingPose(float phase,float strength,float jog=0)
         {
             IdlePose();
-            WalkPose(phase,strength);
+            WalkPose(phase,strength,jog);
             PlaceFeet(rigAsset?rigAsset.IdleFloor:mesh.bounds.min.y);
         }
         public void PlayWavePose(float progress)
@@ -230,6 +249,23 @@ namespace PeacePark
             rightArm.localRotation=Quaternion.Euler(0,0,-40-24*airborne);
         }
 
+        internal void PlayTrampolinePose(float lift,float compression)
+        {
+            PlayIdlePose();
+            var spring=Vector3.down*(.15f*compression);
+            body.localPosition+=spring;
+            head.localPosition+=spring;
+            leftShoulder.localPosition+=spring;
+            rightShoulder.localPosition+=spring;
+            body.localRotation=Quaternion.Euler(11*compression-6*lift,0,0);
+            head.localRotation=Quaternion.Euler(-5*compression+3*lift,0,0);
+            leftLeg.localRotation=rightLeg.localRotation=Quaternion.Euler(-13*lift,0,0);
+            float armPitch=16*compression-23*lift;
+            float armSpread=40+21*lift;
+            leftArm.localRotation=Quaternion.Euler(armPitch,0,armSpread);
+            rightArm.localRotation=Quaternion.Euler(armPitch,0,-armSpread);
+        }
+
         internal void PlayDancePose(float progress)
         {
             PlayIdlePose();
@@ -242,6 +278,30 @@ namespace PeacePark
             leftLeg.localRotation=Quaternion.Euler(Mathf.Max(0,sway)*10,0,0);
             rightLeg.localRotation=Quaternion.Euler(Mathf.Max(0,-sway)*10,0,0);
         }
+
+        internal void PlayBubblePose(float puff)
+        {
+            PlayIdlePose();
+            body.localRotation=Quaternion.Euler(-5*puff,0,0);
+            head.localRotation=Quaternion.Euler(9*puff,0,0);
+            leftArm.localRotation=Quaternion.Euler(-15*puff,0,40-10*puff);
+            rightArm.localRotation=Quaternion.Euler(-15*puff,0,-40+10*puff);
+        }
+
+        internal Vector3 BubbleMouth => head.TransformPoint(Kind switch
+        {
+            AnimalKind.Giraffe => new Vector3(0,1.37f,-1.24f),
+            AnimalKind.Elephant => new Vector3(.27f,-.37f,-1.54f),
+            AnimalKind.Triceratops => new Vector3(0,.31f,-1.48f),
+            AnimalKind.Crocodile => new Vector3(0,.37f,-1.79f),
+            AnimalKind.Hippo => new Vector3(0,.29f,-1.37f),
+            AnimalKind.Gorilla => new Vector3(0,.40f,-1.07f),
+            AnimalKind.Bear => new Vector3(0,.42f,-1.02f),
+            AnimalKind.Tiger => new Vector3(0,.48f,-1.02f),
+            AnimalKind.Frog => new Vector3(0,.35f,-.85f),
+            _ => new Vector3(0,.37f,-.82f)
+        });
+        internal Vector3 BubbleDirection=>-head.forward;
 
         internal void PlaySlidePose(float seated)
         {
@@ -276,7 +336,7 @@ namespace PeacePark
             leftArm.localRotation = Quaternion.Euler(30 * seated, -12 * seated, 40 - 16 * seated);
             rightArm.localRotation = Quaternion.Euler(30 * seated, 12 * seated, -40 + 16 * seated);
         }
-        internal Vector3 PlayCarouselSeatPose(float seated)
+        internal Vector3 PlayStraddleRidePose(float seated)
         {
             PlayIdlePose();
             body.localRotation=Quaternion.Euler(-4*seated,0,0);
@@ -287,7 +347,7 @@ namespace PeacePark
             rightArm.localRotation=Quaternion.Euler(63*seated,-20*seated,-40+24*seated);
             return (leftLeg.position+rightLeg.position)*.5f-transform.position;
         }
-        internal void GripCarouselHandle(Vector3 handle,float grip)
+        internal void GripRideHandle(Vector3 handle,float grip)
         {
             AimHand(leftArm,-1,handle-transform.right*.14f,grip);
             AimHand(rightArm,1,handle+transform.right*.14f,grip);
@@ -334,6 +394,80 @@ namespace PeacePark
             if(correctiveReady)skin.SetBlendShapeWeight(0,100*(1-grip));
         }
 
+        internal void PlayLadderPose(Vector3 leftGrip,Vector3 rightGrip,float stride,float strength)
+        {
+            PlayIdlePose();
+            float leftStep=Mathf.Max(0,stride)*strength,rightStep=Mathf.Max(0,-stride)*strength;
+            leftLeg.localPosition+=Vector3.up*(leftStep*.25f);
+            rightLeg.localPosition+=Vector3.up*(rightStep*.25f);
+            leftLeg.localRotation=Quaternion.Euler(32*leftStep,0,-8*strength);
+            rightLeg.localRotation=Quaternion.Euler(32*rightStep,0,8*strength);
+            body.localRotation=Quaternion.Euler(-8*strength,0,0);
+            head.localRotation=Quaternion.Euler(10*strength,0,-6*stride*strength);
+            AimHand(leftArm,-1,leftGrip,strength);
+            AimHand(rightArm,1,rightGrip,strength);
+        }
+
+        internal Vector3 TubeWaist => Vector3.Lerp((leftLeg.position+rightLeg.position)*.5f,body.position,.46f);
+        internal Vector3 SwimChest => Vector3.Lerp(body.position,head.position,.4f);
+
+        internal void PlayTubeFloatPose(float immersed,float seconds)
+        {
+            PlayIdlePose();
+            float kick=Mathf.Sin(seconds*5.5f)*immersed;
+            leftLeg.localRotation=Quaternion.Euler(immersed*5+12*kick,0,-4*immersed);
+            rightLeg.localRotation=Quaternion.Euler(immersed*5-12*kick,0,4*immersed);
+            head.localRotation=Quaternion.Euler(-3*immersed,7*Mathf.Sin(seconds*1.1f)*immersed,0);
+        }
+
+        internal void HoldTube(Vector3 leftHandle,Vector3 rightHandle,float grip)
+        {
+            AimHand(leftArm,-1,leftHandle,grip);
+            AimHand(rightArm,1,rightHandle,grip);
+        }
+
+        internal void PlaySwimmingPose(float strength,float seconds)
+        {
+            PlayIdlePose();
+            float phase=seconds*6.8f;
+            float kick=Mathf.Sin(phase*1.75f);
+            float pull=Mathf.Sin(phase);
+            float reach=Mathf.Cos(phase);
+            model.localRotation=Quaternion.Euler(-76*strength,0,5*pull*strength);
+            head.localRotation=Quaternion.Euler(61*strength,8*pull*strength,-4*pull*strength);
+            leftLeg.localRotation=Quaternion.Euler(12*kick*strength,0,-7*strength);
+            rightLeg.localRotation=Quaternion.Euler(-12*kick*strength,0,7*strength);
+            leftArm.localRotation=Quaternion.Slerp(leftArm.localRotation,Quaternion.Euler(-15+26*reach,-37-26*pull,3+23*reach),strength);
+            rightArm.localRotation=Quaternion.Slerp(rightArm.localRotation,Quaternion.Euler(-15-26*reach,37-26*pull,-3+23*reach),strength);
+        }
+
+        internal void PlaySunbedPose(float recline,float seconds,Vector3 offset)
+        {
+            PlayIdlePose();
+            model.localRotation=Quaternion.Euler(90*recline,0,0);
+            model.localPosition+=offset*recline;
+            body.localPosition+=Vector3.back*(.018f*(1-Mathf.Cos(seconds*2.8f))*recline);
+            head.localRotation=Quaternion.Euler(-6*recline,0,0);
+            leftArm.localRotation=Quaternion.Euler(8*recline,0,40+31*recline);
+            rightArm.localRotation=Quaternion.Euler(8*recline,0,-40-31*recline);
+            leftLeg.localRotation=Quaternion.Euler(8*recline,0,4*recline);
+            rightLeg.localRotation=Quaternion.Euler(8*recline,0,-4*recline);
+        }
+
+        internal Vector3 MeasureSunbedPose(Mesh sample)
+        {
+            var scale=transform.localScale;
+            transform.localScale=Vector3.one;
+            PlaySunbedPose(1,0,Vector3.zero);
+            skin.BakeMesh(sample,false);
+            sample.RecalculateBounds();
+            var bounds=sample.bounds;
+            transform.localScale=scale;
+            PlayIdlePose();
+            // Fit the back of the posed mesh to the cushion for each species.
+            return new Vector3(-bounds.center.x,.025f-bounds.min.y,-bounds.center.z);
+        }
+
         void AimHandAtPole(Transform arm,int side,Vector3 pole,float rise,float grip)
         {
             var target=pole+transform.right*(side*.062f);
@@ -351,8 +485,10 @@ namespace PeacePark
         void Update(){if(running&&!ExternalMotion){sequenceTime+=Time.deltaTime;PreviewPose(sequenceTime);}}
         void IdlePose()
         {
+            if(campCrouched){model.localScale=Vector3.one;campCrouched=false;}
             if(correctiveReady){skin.SetBlendShapeWeight(0,100);skin.SetBlendShapeWeight(1,0);skin.SetBlendShapeWeight(2,0);}
-            leftLeg.localRotation=rightLeg.localRotation=body.localRotation=head.localRotation=Quaternion.identity;model.localPosition=Vector3.zero;
+            leftLeg.localRotation=rightLeg.localRotation=body.localRotation=head.localRotation=Quaternion.identity;
+            model.SetLocalPositionAndRotation(Vector3.zero,Quaternion.identity);
             body.localPosition=BodyRest;
             leftLeg.localPosition=LeftHipRest;
             rightLeg.localPosition=RightHipRest;

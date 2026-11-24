@@ -11,6 +11,7 @@ namespace PeacePark
         public ParkHouse[] Houses;
         public ParkFountain Fountain;
         public ParkSlide Slide;
+        public ParkPoleRide PoleRide;
         public ParkTrampoline Trampoline;
         public ParkSeesaw Seesaw;
         public ParkRoundaboutRide Roundabout;
@@ -19,6 +20,13 @@ namespace PeacePark
         public ParkCarouselRide Carousel;
         public ParkForestRide[] ForestRides;
         public ParkSandSled SandSled;
+        public ParkDesertCamp DesertCamp;
+        public ParkResortRiver ResortRiver;
+        public ParkResortSwim ResortSwim;
+        public ParkResortSlide ResortSlide;
+        public ParkResortSunbeds ResortSunbeds;
+        public ParkVillageDeer[] Deer;
+        public ParkIceRink IceRink;
         public MeshFilter Path;
         public ParkDuneTerrain DuneTerrain;
         public float LawnHeight;
@@ -34,6 +42,7 @@ namespace PeacePark
         public float CloseFocusHeight;
         public float FogEnd;
         public float FogStart;
+        public float ShadowDistance;
         public Color Sky;
         public Texture2D Preview;
     }

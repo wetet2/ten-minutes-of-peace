@@ -13,7 +13,6 @@ namespace PeacePark.Editor
         readonly Material darkWood = Paint("Deep woodland timber", "#986038");
         readonly Material wood = Paint("Honey oak", "#C88B4D");
         readonly Material lightWood = Paint("Golden cut wood", "#E7B872");
-        readonly Material growthRing = Paint("Warm annual rings", "#C59056");
         readonly Material metal = Paint("Zipline cable and hardware", "#55594C");
         readonly float ground;
         readonly List<Rect> obstacles;
@@ -35,24 +34,19 @@ namespace PeacePark.Editor
         ParkForestRide MakeStumps(Transform root)
         {
             var group = Group("Forest stepping stumps", root, Vector3.zero);
-            var tops = new[] { Floor(-11.35f,-6.95f), Floor(-9.68f,-6.23f), Floor(-7.93f,-6.46f),
-                Floor(-6.19f,-7.14f), Floor(-4.38f,-7.32f) };
+            var tops = new[] { Floor(-8.80f,-5.90f), Floor(-7.13f,-5.18f), Floor(-5.38f,-5.41f),
+                Floor(-3.64f,-6.09f), Floor(-1.83f,-6.27f) };
             var heights = new[] { .43f, .56f, .34f, .61f, .40f };
             var widths = new[] { 1.32f, 1.43f, 1.38f, 1.48f, 1.36f };
             var route = new Vector3[tops.Length + 1];
+            var surface = MakeStumpSurface();
+            var finish = MakeStumpFinish();
             for (int i = 0; i < tops.Length; i++)
             {
                 var foot = tops[i];
                 float height = heights[i], width = widths[i];
                 var parts = new Pieces();
-                parts.Add(cylinder, bark, foot + Vector3.up * (height / 2), new Vector3(width, height / 2, width));
-                parts.Add(cylinder, lightWood, foot + Vector3.up * (height - .024f), new Vector3(width * .96f, .024f, width * .96f));
-                for (int j = 0; j < 7; j++)
-                {
-                    float size = width * (.84f - j * .11f);
-                    var center = foot + new Vector3(j * .009f, height + .001f + j * .0014f, j * -.006f);
-                    parts.Add(cylinder, j % 2 == 0 ? growthRing : lightWood, center, new Vector3(size, .001f, size));
-                }
+                parts.Add(surface, finish, foot + Vector3.up * (height / 2), new Vector3(width, height / 2, width));
                 for (int j = 0; j < 14; j++)
                 {
                     float angle = j * 360f / 14 + i * 13;
@@ -64,30 +58,83 @@ namespace PeacePark.Editor
                 route[i] = foot + Vector3.up * (height + .01f);
                 AddFootprint(foot, width * .52f, width * .52f);
             }
-            route[route.Length - 1] = Floor(-3.17f, -7.3f);
+            route[route.Length - 1] = Floor(-.62f, -6.25f);
             var ride = group.gameObject.AddComponent<ParkForestRide>();
-            ride.Configure(ParkForestRide.Course.Stumps, Floor(-12.63f, -7.43f), route);
+            ride.Configure(ParkForestRide.Course.Stumps, Floor(-10.08f, -6.38f), route);
             return ride;
+        }
+
+        Mesh MakeStumpSurface()
+        {
+            var mesh = Object.Instantiate(cylinder);
+            mesh.name = "Stump with one cut surface";
+            var points = mesh.vertices;
+            var normals = mesh.normals;
+            var uv = new Vector2[points.Length];
+            for (int i = 0; i < points.Length; i++)
+                uv[i] = normals[i].y > .9f ? new Vector2(points[i].x + .5f, points[i].z + .5f) : Vector2.zero;
+            mesh.uv = uv;
+            return mesh;
+        }
+
+        Material MakeStumpFinish()
+        {
+            const int size = 128;
+            const float blendWidth = 1f / size;
+            var barkColor = bark.color;
+            var cutColor = lightWood.color;
+            Color ringColor = new Color32(197, 144, 86, 255);
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                var point = new Vector2((x + .5f) / size - .5f, (y + .5f) / size - .5f);
+                var color = Color.Lerp(cutColor, barkColor, Mathf.InverseLerp(.48f - blendWidth, .48f, point.magnitude));
+                for (int i = 0; i < 7; i++)
+                {
+                    float radius = .42f - i * .055f;
+                    float distance = (point - new Vector2(.0065f, -.0043f) * i).magnitude;
+                    color = Color.Lerp(color, i % 2 == 0 ? ringColor : cutColor,
+                        1 - Mathf.InverseLerp(radius - blendWidth, radius, distance));
+                }
+                pixels[y * size + x] = color;
+            }
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, true)
+            {
+                name = "Chestnut bark and annual rings", wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Trilinear, anisoLevel = 4
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+            var material = Paint("Stump surface with annual rings", "#FFFFFF");
+            material.mainTexture = texture;
+            material.EnableKeyword("PEACE_PARK_PAINT_MAP");
+            return material;
         }
 
         ParkForestRide MakeBridge(Transform root)
         {
             var group = Group("Forest wooden cloud ladder", root, Vector3.zero);
             var parts = new Pieces();
-            var start = Floor(12.9f, -4.15f);
-            var end = Floor(8.45f, 1.87f);
+            var start = Floor(10.75f, -.65f);
+            var end = Floor(3.70f, 1.60f);
             var along = (end - start).normalized;
             var side = Vector3.Cross(Vector3.up, along);
             var rotation = Quaternion.LookRotation(along);
             const int count = 13;
             const float half = 1.13f;
+            const float halfTread = .245f;
+            const float landingClearance = .86f;
+            float footprintX = Mathf.Abs(side.x) * half + Mathf.Abs(along.x) * halfTread;
+            float footprintZ = Mathf.Abs(side.z) * half + Mathf.Abs(along.z) * halfTread;
             var path = new Vector3[count + 1];
             for (int i = 0; i < count; i++)
             {
                 float t = i / (count - 1f);
                 var step = Vector3.Lerp(start, end, t) + Vector3.up * (.19f + 1.33f * Mathf.Sin(Mathf.PI * t));
                 path[i] = step;
-                Plank(parts, i % 3 == 0 ? lightWood : wood, step, new Vector3(half * 2, .13f, .49f), rotation);
+                Plank(parts, i % 3 == 0 ? lightWood : wood, step, new Vector3(half * 2, .13f, halfTread * 2), rotation);
+                AddFootprint(step, footprintX, footprintZ);
                 foreach (int sign in new[] { -1, 1 })
                 {
                     var edge = step + side * (sign * (half - .12f));
@@ -105,9 +152,8 @@ namespace PeacePark.Editor
                 }
             }
             parts.Build(group);
-            path[count] = end + along * .61f;
-            var entry = start - along * .61f;
-            obstacles.Add(Rect.MinMaxRect(7.28f, start.z - .31f, 14.10f, end.z + .33f));
+            path[count] = end + along * landingClearance;
+            var entry = start - along * landingClearance;
             var ride = group.gameObject.AddComponent<ParkForestRide>();
             ride.Configure(ParkForestRide.Course.Bridge, entry, path);
             return ride;
@@ -165,8 +211,8 @@ namespace PeacePark.Editor
             Plank(decking, lightWood, lowerStep, new Vector3(1.58f, .16f, .40f), sideStairs);
             decking.Build(Group("Launch and landing decks", group, Vector3.zero));
 
-            var from = launch + Vector3.up * (1.84f + ParkForestRide.HandleDrop);
-            var to = dock + Vector3.up * (1.68f + ParkForestRide.HandleDrop);
+            var from = launch + Vector3.up * (1.62f + ParkForestRide.HandleDrop);
+            var to = dock + Vector3.up * (1.57f + ParkForestRide.HandleDrop);
             var suspended = new Pieces();
             // The cable overhangs the centre of each platform so the rider can mount and land there.
             var cablePerMeter = (to - from) / Vector3.ProjectOnPlane(to - from, Vector3.up).magnitude;
@@ -182,9 +228,15 @@ namespace PeacePark.Editor
             carrier.Add(box, lightWood, new Vector3(0, .006f, 0), new Vector3(.25f, .23f, .46f));
             foreach (float z in new[] { -.14f, .14f })
                 carrier.Add(cylinder, metal, new Vector3(0, .055f, z), new Vector3(.16f, .145f, .16f), Quaternion.Euler(0, 0, 90));
-            carrier.Beam(cylinder, metal, Vector3.down * .06f, Vector3.down * ParkForestRide.HandleDrop, .064f);
-            carrier.Beam(cylinder, wood, new Vector3(-.51f,-ParkForestRide.HandleDrop,0),
-                new Vector3(.51f,-ParkForestRide.HandleDrop,0), .095f);
+            const float halfHandle = .77f;
+            foreach (int side in new[] { -1, 1 })
+            {
+                var shoulder = new Vector3(side * halfHandle, -.30f, 0);
+                carrier.Beam(cylinder, metal, Vector3.down * .10f, shoulder, .054f);
+                carrier.Beam(cylinder, metal, shoulder, new Vector3(shoulder.x, -ParkForestRide.HandleDrop, 0), .054f);
+            }
+            carrier.Beam(cylinder, wood, new Vector3(-halfHandle,-ParkForestRide.HandleDrop,0),
+                new Vector3(halfHandle,-ParkForestRide.HandleDrop,0), .095f);
             carrier.Build(trolley);
 
             obstacles.Add(Rect.MinMaxRect(-13.34f, .02f, -7.11f, 3.6f));
@@ -210,7 +262,7 @@ namespace PeacePark.Editor
                 trunk.Add(stone, i % 2 == 0 ? bark : darkWood, radial * .76f + Vector3.up * .16f,
                     new Vector3(.52f,.32f,1.74f), Quaternion.LookRotation(radial));
             }
-            const float height = 12.2f;
+            const float height = 13.55f;
             trunk.Add(TaperedTrunk(), bark, Vector3.zero, new Vector3(1, height, 1));
             trunk.Build(group);
             var pine = new Pieces();
@@ -220,7 +272,7 @@ namespace PeacePark.Editor
             for (int i = 0; i < 5; i++)
             {
                 float width = 3.36f - i * .48f;
-                pine.Add(bough, i % 2 == 0 ? needles : tips, Vector3.up * (7.48f + i * 1.06f),
+                pine.Add(bough, i % 2 == 0 ? needles : tips, Vector3.up * (8.83f + i * 1.06f),
                     new Vector3(width, 2.48f - i * .16f, width), Quaternion.Euler(0, i * 29, 0));
             }
             pine.Build(Group("Zipline pine crown", group, Vector3.zero));

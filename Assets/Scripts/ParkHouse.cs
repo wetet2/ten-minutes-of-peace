@@ -19,12 +19,13 @@ namespace PeacePark
         public Vector2[] ExitSlope;
         public ParkDuneTerrain ExitTerrain;
         public ParkSlide EntranceSlide;
-        public Transform EntrancePole;
+        public ParkPoleRide PoleRide;
+        public Transform EntrancePole=>PoleRide?PoleRide.Pole:null;
+        public ParkDesertCamp CampTent;
         public float ExitSeconds;
-        internal const float PoleEntrySeconds=1.20f,PoleDescentSeconds=2.45f,PoleReleaseSeconds=.4f,PoleWalkSeconds=1.15f;
         internal float ExitDuration=>EntranceSlide?
             ParkSlide.EntrySeconds+ParkSlide.DescentSeconds+ParkSlide.StandSeconds+ParkSlide.ExitWalkSeconds:
-            EntrancePole?PoleEntrySeconds+PoleDescentSeconds+PoleReleaseSeconds+PoleWalkSeconds:
+            PoleRide?ParkPoleRide.ArrivalWalkSeconds+ParkRabbitAgent.WaveDuration+ParkPoleRide.SlideSequenceSeconds:
             ExitSeconds>0?ExitSeconds:3.75f;
         public static float PorchHeight(float localZ)=>.30f+(.025f-.30f)*((-localZ-2.25f)/1.45f);
         public float DoorFraction {get;private set;}
@@ -36,7 +37,9 @@ namespace PeacePark
         MaterialPropertyBlock entranceLightProperties;
         static readonly int LightStrength=Shader.PropertyToID("_Strength");
         internal int LastDepartureDirection {get;set;}=-1;
-        internal bool CanReserve=>!IsBusy&&(!EntranceSlide||!EntranceSlide.isActiveAndEnabled||EntranceSlide.Available);
+        internal bool CanReserve=>!IsBusy&&(!EntranceSlide||!EntranceSlide.isActiveAndEnabled||EntranceSlide.Available)&&
+            (!PoleRide||!PoleRide.isActiveAndEnabled||PoleRide.Available)&&
+            (!CampTent||!CampTent.TentReserved);
 
         public bool TryReserve()
         {
@@ -51,6 +54,15 @@ namespace PeacePark
         {
             opening=previous&&previous.opening;IsBusy=previous&&previous.IsBusy;DoorFraction=previous?previous.DoorFraction:0;
             PoseDoors();
+        }
+        internal void ResetArrival()
+        {
+            ContinueFrom(null);
+            OpenCount=CompletedExits=0;
+            LastDepartureDirection=-1;
+            bellTime=0;
+            if(EntranceBell)EntranceBell.localRotation=Quaternion.identity;
+            if(EntranceChime)EntranceChime.Stop();
         }
         public void Advance(float deltaTime)
         {

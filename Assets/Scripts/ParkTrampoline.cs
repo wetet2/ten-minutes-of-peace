@@ -5,8 +5,8 @@ namespace PeacePark
     public sealed class ParkTrampoline : MonoBehaviour, IParkAnimalRide
     {
         const float GateDistance=3.32f,MatHeight=.789f,WalkSeconds=2.65f;
-        const float BounceSeconds=1.05f;
-        const int Bounces=5;
+        const float BounceSeconds=.78f;
+        const int Bounces=10;
         ParkRabbitAgent waiting,rider;
         bool atEntrance;
         float time;
@@ -31,6 +31,7 @@ namespace PeacePark
             {
                 if(!waiting||!atEntrance)return;
                 rider=waiting;
+                rider.BeginRideActivity();
                 waiting=null;
                 atEntrance=false;
                 time=0;
@@ -41,11 +42,12 @@ namespace PeacePark
                 WalkAcross(Mathf.Lerp(-GateDistance,0,time/WalkSeconds));
             else if(time<endBounce)
             {
-                float cycle=(time-WalkSeconds)/BounceSeconds;
-                float phase=cycle-Mathf.Floor(cycle);
-                float jump=Mathf.Clamp01((phase-.17f)/.64f);
-                rider.transform.position=transform.TransformPoint(Vector3.up*(MatHeight+.80f*4*jump*(1-jump)));
-                rider.Character.PlayHopPose(phase);
+                float phase=Mathf.Repeat((time-WalkSeconds)/BounceSeconds,1);
+                float lift=4*phase*(1-phase);
+                float contact=Mathf.Min(phase,1-phase);
+                float compression=1-Mathf.SmoothStep(0,1,contact/.12f);
+                rider.transform.position=transform.TransformPoint(Vector3.up*(MatHeight+.80f*lift));
+                rider.Character.PlayTrampolinePose(lift,compression);
             }
             else
             {

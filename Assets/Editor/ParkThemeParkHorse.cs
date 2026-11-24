@@ -5,7 +5,7 @@ namespace PeacePark.Editor
 {
     internal sealed partial class ParkThemeParkSetup
     {
-        Transform[] AddCarouselHorses(Pieces riders,Transform platform,float deckHeight,float eaveHeight)
+        Transform[] AddCarouselHorses(Transform platform,float deckHeight,float eaveHeight,out Transform[] lifts)
         {
             var body=HorseLoft("Rounded toy horse body",
                 Profile(0,1.15f,-.87f,0,0),
@@ -113,29 +113,42 @@ namespace PeacePark.Editor
                     Profile(side*.158f,2.28f,.986f,0,0));
             }
             const float horseScale=.5f;
+            const float poleForward=.56f;
             var scaling=new Vector3(.78f,1.10f,.78f)*horseScale;
             const int horseCount=7;
             var seats=new Transform[horseCount];
+            lifts=new Transform[horseCount];
             for(int i=0;i<horseCount;i++)
             {
                 int scheme=i%coats.Length;
                 var turn=Quaternion.Euler(0,(i+.3f)*360f/horseCount,0);
                 float mountHeight=deckHeight+(.08f+.15f*(i%2))*horseScale;
                 var origin=turn*Vector3.right*2.70f+Vector3.up*mountHeight;
-                Vector3 Point(Vector3 offset)=>origin+turn*Vector3.Scale(offset,scaling);
-                seats[i]=Group("Saddle "+(i+1),platform,Point(new Vector3(0,1.57f,-.135f)));
-                seats[i].localRotation=turn*Quaternion.Euler(0,180,0);
-                void Sculpt(Mesh mesh,Material material) => riders.Add(mesh,material,origin,scaling,turn);
+                var mount=Group("Carousel horse "+(i+1),platform,origin);
+                mount.localRotation=turn;
+                var lift=lifts[i]=Group("Rising horse",mount,Vector3.zero);
+                var horse=new Pieces();
+                Vector3 Point(Vector3 offset)=>Vector3.Scale(offset,scaling);
+                var seat=seats[i]=Group("Saddle "+(i+1),lift,Point(new Vector3(0,1.57f,-.135f)));
+                seat.localRotation=Quaternion.Euler(0,180,0);
+                void Sculpt(Mesh mesh,Material material) => horse.Add(mesh,material,Vector3.zero,scaling);
                 void Detail(Mesh mesh,Material material,Vector3 at,Vector3 size) =>
-                    riders.Add(mesh,material,Point(at),Vector3.Scale(size,scaling),turn);
+                    horse.Add(mesh,material,Point(at),Vector3.Scale(size,scaling));
                 void Band(Material material,Vector3 a,Vector3 b,float width) =>
-                    riders.Beam(cylinder,material,Point(a),Point(b),width*horseScale);
+                    horse.Beam(cylinder,material,Point(a),Point(b),width*horseScale);
 
-                var post=Point(new Vector3(0,0,-.79f));
-                Group("Support pole",seats[i],Vector3.zero).position=platform.TransformPoint(post);
-                riders.Beam(cylinder,yellow,new Vector3(post.x,deckHeight,post.z),new Vector3(post.x,eaveHeight-.11f,post.z),.062f);
+                var post=Point(Vector3.forward*poleForward);
+                var shaft=Group("Support pole",mount,post);
+                var poleParts=new Pieces();
+                poleParts.Beam(cylinder,yellow,Vector3.up*(deckHeight-mountHeight),
+                    Vector3.up*(eaveHeight-.11f-mountHeight),.062f);
+                poleParts.Build(shaft);
+                var collar=Group("Sliding pole collar",lift,Point(new Vector3(0,1.91f,poleForward)));
+                var collarParts=new Pieces();
+                collarParts.Add(cylinder,trim,Vector3.zero,new Vector3(.107f,.072f,.107f));
+                collarParts.Build(collar);
                 var handle=new Vector3(0,1.84f,.255f);
-                Group("Saddle handle",seats[i],Vector3.zero).position=platform.TransformPoint(Point(handle));
+                Group("Saddle handle",seat,Quaternion.Inverse(seat.localRotation)*(Point(handle)-seat.localPosition));
                 var bar=Vector3.right*.16f;
                 Band(trim,handle-bar,handle+bar,.080f);
                 foreach(float side in new[]{-1f,1f})
@@ -186,6 +199,7 @@ namespace PeacePark.Editor
                     Band(trim,stirrup,stirrup+new Vector3(0,-.091f,.055f),.032f);
                     Band(trim,stirrup+new Vector3(0,-.091f,-.055f),stirrup+new Vector3(0,-.091f,.055f),.032f);
                 }
+                horse.Build(lift);
             }
             return seats;
         }

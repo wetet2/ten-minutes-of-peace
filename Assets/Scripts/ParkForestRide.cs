@@ -6,7 +6,7 @@ namespace PeacePark
     {
         public enum Course { Stumps, Bridge, Zipline }
         enum Stage { Approach, Traverse, Grip, Glide, Dismount, Exit }
-        public const float HandleDrop = .52f;
+        public const float HandleDrop = 1.75f;
 
         [SerializeField] Course course;
         [SerializeField] Vector3 approach, cableStart, cableEnd;
@@ -14,6 +14,8 @@ namespace PeacePark
         [SerializeField] Transform trolley;
 
         ParkRabbitAgent rider;
+        Vector3[] reverseTreads;
+        bool reverse, returning;
         Stage stage;
         int step;
         float elapsed;
@@ -47,13 +49,37 @@ namespace PeacePark
             MoveTrolley(0);
         }
 
+        Vector3 Entry => reverse ? treads[treads.Length - 1] : approach;
+        Vector3[] Traversal => reverse ? reverseTreads : treads;
+
         internal bool TryQueue(ParkRabbitAgent animal)
         {
-            if (!isActiveAndEnabled || rider || treads == null || treads.Length == 0 ||
-                !animal.TryReserveRequestedRide(this, Approach)) return false;
-            rider = animal;
-            Enter(Stage.Approach);
-            return true;
+            if (!isActiveAndEnabled || rider || treads == null || treads.Length == 0) return false;
+            bool canReverse = course != Course.Zipline;
+            var position = transform.InverseTransformPoint(animal.transform.position);
+            bool nearerLast = canReverse && animal.PendingAction != Action && (position - treads[treads.Length - 1]).sqrMagnitude <
+                (position - approach).sqrMagnitude;
+            if (ReserveAt(nearerLast) || (canReverse && ReserveAt(!nearerLast)))
+            {
+                rider = animal;
+                returning = false;
+                Enter(Stage.Approach);
+                return true;
+            }
+            return false;
+
+            bool ReserveAt(bool fromLast)
+            {
+                reverse = fromLast;
+                if (!animal.TryReserveRequestedRide(this, transform.TransformPoint(Entry))) return false;
+                if (canReverse && reverseTreads == null)
+                {
+                    reverseTreads = new Vector3[treads.Length];
+                    for (int i = 0; i < treads.Length - 1; i++) reverseTreads[i] = treads[treads.Length - 2 - i];
+                    reverseTreads[reverseTreads.Length - 1] = approach;
+                }
+                return true;
+            }
         }
 
         internal void Advance(float dt)
@@ -63,11 +89,23 @@ namespace PeacePark
             switch (stage)
             {
                 case Stage.Approach:
-                    if (rider.WalkToRideMark(Approach, Facing(approach, treads[0]), dt)) Enter(Stage.Traverse);
+                    if (rider.WalkToRideMark(transform.TransformPoint(Entry), Facing(Entry, Traversal[0]), dt,
+                        automaticSpeed: 6.4f))
+                    {
+                        rider.BeginRideActivity();
+                        Enter(Stage.Traverse);
+                    }
                     break;
                 case Stage.Traverse:
-                    if (!AdvanceSteps(approach, treads, course == Course.Stumps, dt)) break;
+                    if (!AdvanceSteps(Entry, Traversal, course == Course.Stumps, dt)) break;
                     if (course == Course.Zipline) Enter(Stage.Grip);
+                    else if (!returning && rider.ShouldExtendAutomaticRide)
+                    {
+                        // Let the animal cross back while it is already at the attraction.
+                        returning = true;
+                        reverse = !reverse;
+                        Enter(Stage.Traverse);
+                    }
                     else Finish();
                     break;
                 case Stage.Grip:
@@ -151,7 +189,7 @@ namespace PeacePark
             IsAirborne = grip > .16f;
         }
 
-        Vector3 ExitPoint => course == Course.Zipline ? landing[landing.Length - 1] : treads[treads.Length - 1];
+        Vector3 ExitPoint => course == Course.Zipline ? landing[landing.Length - 1] : Traversal[Traversal.Length - 1];
 
         void Finish()
         {

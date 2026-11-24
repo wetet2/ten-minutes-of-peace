@@ -8,6 +8,11 @@ namespace PeacePark
         bool showPerformance;
         bool highQuality;
         float averageFrameTime;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        static bool androidFullScreen=true;
+#else
+        static Vector2Int windowSize=new Vector2Int(1600,900);
+#endif
         void OnEnable()
         {
             QualitySettings.shadows=ShadowQuality.All;
@@ -33,11 +38,35 @@ namespace PeacePark
                 highQuality=!highQuality;
                 ApplyQuality();
             }
-            if(!Application.isEditor&&Input.GetKeyDown(KeyCode.F11))
+            if(Input.GetKeyDown(KeyCode.F11))ToggleFullScreen();
+        }
+        internal static bool IsFullScreen
+        {
+            get
             {
-                if(Screen.fullScreen)Screen.SetResolution(1600,900,FullScreenMode.Windowed);
-                else{var display=Screen.currentResolution;Screen.SetResolution(display.width,display.height,FullScreenMode.FullScreenWindow);}
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return androidFullScreen;
+#else
+                return Screen.fullScreen;
+#endif
             }
+        }
+        internal static void ToggleFullScreen()
+        {
+            if(Application.isEditor)return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            androidFullScreen=!androidFullScreen;
+            Screen.SetResolution(Screen.width,Screen.height,androidFullScreen);
+#else
+            if(IsFullScreen)
+            {
+                Screen.SetResolution(windowSize.x,windowSize.y,FullScreenMode.Windowed);
+                return;
+            }
+            windowSize=new Vector2Int(Screen.width,Screen.height);
+            var display=Screen.currentResolution;
+            Screen.SetResolution(display.width,display.height,FullScreenMode.FullScreenWindow);
+#endif
         }
         void OnGUI()
         {

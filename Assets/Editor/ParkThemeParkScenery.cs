@@ -40,31 +40,7 @@ namespace PeacePark.Editor
             var treeModels=ParkNaturePack.LoadGardenTrees();
             var treeMaterials=new Dictionary<Material,Material>();
             var flowerColors=new[]{yellow,coral,pink,cream,blue};
-            foreach(var patch in new[]{new Vector3(-9,0,-7.3f),new Vector3(-1,0,-1.2f),new Vector3(7.5f,0,-5),
-                new Vector3(9.75f,0,2.2f),new Vector3(-42.2f,0,-11),new Vector3(35.35f,0,-11.5f),
-                new Vector3(-29.4f,0,10.6f),new Vector3(-11.2f,0,15.9f),new Vector3(9.75f,0,14.6f),
-                new Vector3(26,0,-37.0f),new Vector3(-26,0,-37.0f),new Vector3(46,0,-10.4f)})
-            {
-                var bed=Group("Bright flower island",gardens,patch);
-                var parts=new Pieces();
-                parts.Add(cylinder,paving,new Vector3(0,.11f,0),new Vector3(4.24f,.11f,2.65f));
-                parts.Add(cylinder,leaf,new Vector3(0,.21f,0),new Vector3(4.03f,.10f,2.43f));
-                for(int i=0;i<21;i++)
-                {
-                    float angle=i*2.39996f;
-                    float radius=Mathf.Sqrt((i+.6f)/21);
-                    var center=new Vector3(Mathf.Cos(angle)*1.76f*radius,.50f+.13f*Mathf.Sin(i*3.12f),Mathf.Sin(angle)*1.03f*radius);
-                    parts.Beam(cylinder,leaf,new Vector3(center.x,.23f,center.z),center,.035f);
-                    for(int petal=0;petal<5;petal++)
-                    {
-                        float a=petal*Mathf.PI*2/5;
-                        parts.Add(flowerSphere,flowerColors[i%flowerColors.Length],
-                            center+new Vector3(.134f*Mathf.Cos(a),0,.134f*Mathf.Sin(a)),new Vector3(.22f,.12f,.22f));
-                    }
-                    parts.Add(flowerSphere,yellow,center+Vector3.up*.026f,Vector3.one*.145f);
-                }
-                parts.Build(bed);
-            }
+            MakeFlowerBeds(gardens,flowerColors);
             var treeSpots=new[]{new Vector3(-9.8f,0,3.5f),new Vector3(8.9f,0,5.9f),new Vector3(7.45f,0,-2.75f),
                 new Vector3(-25.7f,0,13.2f),new Vector3(-30.5f,0,7.75f),new Vector3(34.7f,0,17.0f),new Vector3(-39.65f,0,9),
                 new Vector3(37.4f,0,-14.5f),new Vector3(-11,0,15),new Vector3(3,0,14.5f),new Vector3(11,0,14),
@@ -72,16 +48,6 @@ namespace PeacePark.Editor
                 new Vector3(-26,0,34.4f),new Vector3(37.8f,0,31.4f),new Vector3(-7.75f,0,35.0f)};
             for(int i=0;i<treeSpots.Length;i++)
                 PlantTree(i,treeSpots[i],4f+i%4*.46f);
-            var bushes=new Pieces();
-            foreach(var patch in new[]{new Vector3(-5,0,-3.6f),new Vector3(-6.8f,0,.6f),new Vector3(-11.8f,0,-.8f),
-                new Vector3(4.3f,0,-2.6f),new Vector3(1.95f,0,2.7f),new Vector3(9.8f,0,1.0f),
-                new Vector3(12.1f,0,3.1f),new Vector3(15.6f,0,-10.3f),new Vector3(-17.0f,0,4.2f)})
-            {
-                for(int i=0;i<5;i++)
-                    bushes.Add(flowerSphere,i%2==0?leaf:lightLeaf,patch+new Vector3(.42f*Mathf.Cos(i*2.4f),.48f,.45f*Mathf.Sin(i*2.4f)),
-                        new Vector3(1.18f,.99f,1.12f));
-            }
-            bushes.Build(Group("Rounded shrubs",gardens,Vector3.zero));
             for(int i=0;i<32;i++)
             {
                 float distance=(i+.5f)*ParkElephantTrain.Length/32;
@@ -118,6 +84,7 @@ namespace PeacePark.Editor
 
             void PlantTree(int index,Vector3 spot,float height)
             {
+                if(ParkElephantTrain.WithinTrackLoop(spot,margin:2f))return;
                 treeModels.Plant(treeGroup,index,height,height*.98f,spot,index*137.5f,treeMaterials);
             }
             void FenceSection(string name,Vector3 start,Vector3 end)
@@ -125,6 +92,41 @@ namespace PeacePark.Editor
                 var fence=new Pieces();
                 Fence(fence,start,end,cream);
                 fence.Build(Group(name,perimeter,Vector3.zero));
+            }
+        }
+
+        void MakeFlowerBeds(Transform gardens,Material[] flowerColors)
+        {
+            var plaza=Group("Central plaza flower beds",gardens,Vector3.zero);
+            var entrance=Group("Entrance flower beds",gardens,Vector3.zero);
+            var parts=new Pieces();
+            parts.Add(cylinder,paving,new Vector3(0,.11f,0),new Vector3(4.24f,.11f,2.65f));
+            parts.Add(cylinder,leaf,new Vector3(0,.21f,0),new Vector3(4.03f,.10f,2.43f));
+            for(int i=0;i<21;i++)
+            {
+                float angle=i*2.39996f;
+                float radius=Mathf.Sqrt((i+.6f)/21);
+                var center=new Vector3(Mathf.Cos(angle)*1.76f*radius,.50f+.13f*Mathf.Sin(i*3.12f),Mathf.Sin(angle)*1.03f*radius);
+                parts.Beam(cylinder,leaf,new Vector3(center.x,.23f,center.z),center,.035f);
+                for(int petal=0;petal<5;petal++)
+                {
+                    float a=petal*Mathf.PI*2/5;
+                    parts.Add(flowerSphere,flowerColors[i%flowerColors.Length],
+                        center+new Vector3(.134f*Mathf.Cos(a),0,.134f*Mathf.Sin(a)),new Vector3(.22f,.12f,.22f));
+                }
+                parts.Add(flowerSphere,yellow,center+Vector3.up*.026f,Vector3.one*.145f);
+            }
+
+            // Match each bed to its partner on the opposite side of the open central aisle.
+            for(int row=0;row<3;row++)
+                PlacePair(plaza,9.4f,-7.8f+row*8f);
+            for(int pair=0;pair<2;pair++)
+                PlacePair(entrance,17+pair*12f,-39.8f);
+
+            void PlacePair(Transform parent,float offset,float depth)
+            {
+                parts.Build(Group("West flower bed",parent,new Vector3(-offset,0,depth)));
+                parts.Build(Group("East flower bed",parent,new Vector3(offset,0,depth)));
             }
         }
 
@@ -367,20 +369,21 @@ namespace PeacePark.Editor
         void FerrisCabin(Transform cabin,Material color,float bearingZ)
         {
             float floor=ParkThemeParkWheel.CabinFloor;
+            const float roof=2.40f;
             var body=new Pieces();
             body.Add(box,color,new Vector3(0,floor-.11f,0),new Vector3(3.16f,.22f,2.82f));
             body.Add(box,cream,new Vector3(0,floor+.02f,0),new Vector3(2.92f,.04f,2.60f));
             body.Add(box,color,new Vector3(0,floor+.38f,1.27f),new Vector3(3.1f,.77f,.25f));
             body.Add(box,cream,new Vector3(0,floor+.15f,.66f),new Vector3(2.27f,.30f,.91f));
             body.Add(box,cream,new Vector3(0,floor+.77f,1.05f),new Vector3(2.27f,.60f,.19f));
-            body.Add(box,color,new Vector3(0,1.22f,0),new Vector3(3.36f,.24f,2.99f));
-            body.Add(box,cream,new Vector3(0,1.35f,0),new Vector3(3.08f,.13f,2.71f));
+            body.Add(box,color,new Vector3(0,roof,0),new Vector3(3.36f,.24f,2.99f));
+            body.Add(box,cream,new Vector3(0,roof+.13f,0),new Vector3(3.08f,.13f,2.71f));
             var bearing=new Vector3(0,0,bearingZ);
             body.Add(cylinder,steel,bearing,new Vector3(.53f,.11f,.53f),Quaternion.Euler(90,0,0));
             foreach(float x in new[]{-.68f,.68f})
             {
                 body.Beam(cylinder,steel,new Vector3(x,floor+.14f,1.37f),bearing,.15f);
-                body.Beam(cylinder,steel,bearing,new Vector3(x*.6f,1.22f,1.42f),.15f);
+                body.Beam(cylinder,steel,bearing,new Vector3(x*.6f,roof,1.42f),.15f);
             }
             foreach(float x in new[]{-1.11f,1.11f})
                 body.Add(flowerSphere,yellow,new Vector3(x,floor+.44f,-1.385f),new Vector3(.19f,.19f,.08f));
@@ -388,7 +391,7 @@ namespace PeacePark.Editor
             {
                 body.Add(box,color,new Vector3(x,floor+.42f,0),new Vector3(.24f,.80f,2.79f));
                 foreach(float z in new[]{-1.24f,1.22f})
-                    body.Beam(cylinder,cream,new Vector3(x,floor+.68f,z),new Vector3(x,1.2f,z),.095f);
+                    body.Beam(cylinder,cream,new Vector3(x,floor+.68f,z),new Vector3(x,roof-.02f,z),.095f);
                 body.Add(box,color,new Vector3(x*.86f,floor+.42f,-1.26f),new Vector3(.56f,.80f,.22f));
             }
             body.Build(cabin);
@@ -469,12 +472,12 @@ namespace PeacePark.Editor
                 float a=i*Mathf.PI*2/48;
                 riders.Add(flowerSphere,i%2==0?yellow:pink,new Vector3(3.57f*Mathf.Cos(a),.31f,3.57f*Mathf.Sin(a)),Vector3.one*.13f);
             }
-            var seats=AddCarouselHorses(riders,moving,deckHeight,eaveHeight);
+            var seats=AddCarouselHorses(moving,deckHeight,eaveHeight,out var lifts);
             riders.Build(moving);
             var spin=moving.gameObject.AddComponent<ParkRoundaboutSpin>();
             spin.ReverseDirection=true;
             var ride=carousel.gameObject.AddComponent<ParkCarouselRide>();
-            ride.Configure(spin,seats,deckHeight);
+            ride.Configure(spin,seats,deckHeight,lifts);
             return ride;
         }
     }
